@@ -1,3 +1,29 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from app.models.application import Application
+from app.api.deps import get_db
+from app.schemas.application import ApplicationCreate, ApplicationRead
+from app.models.status_history import StatusHistory
 
 router = APIRouter()
+
+@router.post("/", response_model=ApplicationRead, status_code=201)
+def create_application(application: ApplicationCreate, db: Session = Depends(get_db)):
+    # Create a new application, add it to the database, flush the changes
+    db_application = Application(**application.model_dump())
+    db.add(db_application)
+    db.flush()
+
+    # Create a new status history entry and add it to the database
+    db_status_history = StatusHistory(
+        application_id=db_application.id,
+        status=db_application.status
+    )
+    db.add(db_status_history)
+
+    # Commit the changes to the database
+    db.commit()
+
+    # Refresh the application instance and return the created application
+    db.refresh(db_application)
+    return db_application
