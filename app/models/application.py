@@ -27,12 +27,12 @@ class Application(Base):
     
     # Source + Location
     source: Mapped[str] = mapped_column(String(50), nullable=False)
-    location: Mapped[str] = mapped_column(String(255))
+    location: Mapped[str | None] = mapped_column(String(255))
 
     # Salary
-    salary_min: Mapped[int] = mapped_column(Integer)
-    salary_max: Mapped[int] = mapped_column(Integer)
-    salary_text: Mapped[str] = mapped_column(String(255))
+    salary_min: Mapped[int | None] = mapped_column(Integer)
+    salary_max: Mapped[int | None] = mapped_column(Integer)
+    salary_text: Mapped[str | None] = mapped_column(String(255))
 
     # Notes
     notes: Mapped[str] = mapped_column(String(1000), nullable=True)
