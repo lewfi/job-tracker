@@ -1,7 +1,7 @@
 # job-tracker
 
 6/25/2026:
-Data Modeling and Database Design:
+
 1: Tables and their relationship
 - 2 tables: applications and status_history
 - Linked by applicaton_id column in status_history, which stores id of application in each history row that it belongs to
