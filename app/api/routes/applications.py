@@ -65,3 +65,4 @@ def update_application(application_id: int, application_update: ApplicationUpdat
     db.commit()
     db.refresh(application)
     return application
+
