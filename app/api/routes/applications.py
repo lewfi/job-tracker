@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from app.models.application import Application
 from app.api.deps import get_db
 from app.schemas.application import ApplicationCreate, ApplicationRead
@@ -7,6 +8,7 @@ from app.models.status_history import StatusHistory
 
 router = APIRouter()
 
+# Create a new application
 @router.post("/", response_model=ApplicationRead, status_code=201)
 def create_application(application: ApplicationCreate, db: Session = Depends(get_db)):
     # Create a new application, add it to the database, flush the changes
@@ -27,3 +29,8 @@ def create_application(application: ApplicationCreate, db: Session = Depends(get
     # Refresh the application instance and return the created application
     db.refresh(db_application)
     return db_application
+
+# Get all applications
+@router.get("/", response_model=list[ApplicationRead])
+def get_applications(db: Session = Depends(get_db)):
+    return db.execute(select(Application)).scalars().all()
