@@ -42,4 +42,4 @@ class Application(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=default, onupdate=default, nullable=False)
 
     # Relationship
-    status_history: Mapped[list["StatusHistory"]] = relationship("StatusHistory", back_populates="application")
+    status_history: Mapped[list["StatusHistory"]] = relationship("StatusHistory", back_populates="application", cascade="all, delete-orphan")
