@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.models.application import Application
@@ -34,3 +34,10 @@ def create_application(application: ApplicationCreate, db: Session = Depends(get
 @router.get("/", response_model=list[ApplicationRead])
 def get_applications(db: Session = Depends(get_db)):
     return db.execute(select(Application)).scalars().all()
+
+@router.get("/{application_id}", response_model=ApplicationRead)
+def get_application(application_id: int, db: Session = Depends(get_db)):
+    application = db.get(Application, application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return application
