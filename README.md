@@ -87,3 +87,50 @@
 - Running alembic from your Mac terminal means it runs directly on your Mac, outside Docker's network entirely
 - Tries to connect to a host named db but that hostname exists only inside Docker's internal network
 - The fix was running it via docker compose exec api alembic ... executes the commands inside the running api container on Docker's network so their internal DNS resolves db to the Postgres container successfully
+
+6/26/2026:
+
+1: CRUD + HTTP Methods
+- CRUD stands for Create, Read, Update, Delete
+- Create => POST, Read => GET, Update => PATCH or PUT, Delete => DELETE
+
+2: Path parameter
+- Path parameter is the variable you find in the URL, like the application_id within the URL
+- FastAPI extracts path parameters automatically by matching the parameter name in the URL pattern to a function argument with the same name and a type hint
+- Ex: @router.get("/{application_id}") paired with def get_application(application_id: int, ...) tells FastAPI to extract what's in that URL position, convert it to an int, and pass it in; if conversion fails (ex. /applications/apple), FastAPI returns a 422 automatically
+
+3: Fetching single application by ID
+- If you fetch for a single application and it doesn't exist, then a 404 Not Found exception is raised via FastAPI's HTTPException
+- HTTPException is imported from fastapi, raises status_code=404 and a detail message; FastAPI catches it and converts it to a proper JSON error response automatically so you don't have to build response yourself
+
+4: exclude_unset=TRUE
+- exclude_unset=TRUE within the PATCH endpoint will allow for any unset values for fields to not change the data and this is important for partial updates because it lets you update data without having to either re-enter all the original fields or change all fields
+- Without exclude_unset=TRUE, calling .model_dump() would include all fields with their default values (None for optional fields), which would overwrite all the non-updated fields to None; this destroys all existing data
+
+5: setattr()
+- Because we are looping over a dictionary of field names and values, can't use dot notation when field name is a variable
+- setattr() equivalent to application.{key} = value; works when key is a string var
+- Without setattr(), would need a big if/else block for every possible field name
+
+6: Updating a status
+- Updating a status requires writing to two tables because we do something called denormalization where we keep the same field in different tables
+- Ensuring atomicity is SQLAlchemy session transaction with setattr() and db.add(db_status_history) happening before db_commit(), so either both land or fail
+
+7: HTTP status code for successful DELETE
+- 204 No Content is the status code for a successful delete and we return no body to show that it was deleted, because there's nothing meaningful there now
+
+8: Difference between db.get(Model, id) and db.execute(select(Model).where(...))
+- You would use db.execute(...) for arbitrary queries where you have a specific condition and not a primary key 
+- You use db.get() fetches by primary key specifically and best when you want access to one data entry
+
+9: Cascade delete
+- Cascade delete is when you want to delete an entry that's relied upon by child entries
+- We need this because status_history rows rely on the application id, so cascade tells SQLAlchemy to delete all the child rows first in status_history, then delete the parent
+
+10: --reload in Docker cmd
+- --reload makes uvicorn watch your code files for changes and automatically restart the server when it detects a save
+- Works because the volume mount (-.:/app) syncs local files into the container in real time, so when save happens on my Mac, uvicorn sees change inside container and reloads
+
+11: CheckViolation error
+- CheckViolation error means that a CheckConstraint error is occurring where the input doesn't match the CheckConstraint list
+- This was caused by the source: "string" because "string" isn't a source within our CheckConstraint list.
