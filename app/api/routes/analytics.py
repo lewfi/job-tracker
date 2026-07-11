@@ -18,6 +18,7 @@ def get_pipelines(db: Session = Depends(get_db)):
 
     return result
 
+# Get funnel for analytics
 @router.get("/funnel", response_model=list[FunnelItem])
 def get_funnel(db: Session = Depends(get_db)):
     result = db.execute(
@@ -39,3 +40,21 @@ def get_funnel(db: Session = Depends(get_db)):
         ))
 
     return funnel
+
+# Get weekly applications for analytics
+@router.get("/weekly", response_model=list[WeeklyItem])
+def get_weekly(db: Session = Depends(get_db)):
+    week_col = func.date_trunc('week', Application.date_applied).label('week')
+
+    result = db.execute(
+        select(week_col, func.count().label("count"))
+        .group_by(week_col)
+        .order_by(week_col)
+    ).all()
+
+    return [
+        WeeklyItem(
+            week=row.week.strftime("%Y-%m-%d"),
+            count=row.count
+        ) for row in result
+    ]
