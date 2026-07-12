@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import axios from "axios"
+import api from "../api"
 import { Bar } from "react-chartjs-2"
 import {
   Chart as ChartJS,
@@ -17,7 +17,7 @@ function TimeInStage() {
     const [data, setData] = useState(null)
 
     useEffect(() => {
-        axios.get("http://localhost:8000/analytics/time-in-stage")
+        api.get("/analytics/time-in-stage")
             .then(res => setData(res.data))
     }, [])
 

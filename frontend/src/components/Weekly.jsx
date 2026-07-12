@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import axios from "axios"
+import api from "../api"
 import { Line } from "react-chartjs-2"
 import {
   Chart as ChartJS,
@@ -18,7 +18,7 @@ function Weekly() {
     const [data, setData] = useState(null)
 
     useEffect(() => {
-        axios.get("http://localhost:8000/analytics/weekly")
+        api.get("/analytics/weekly")
             .then(res => setData(res.data))
     }, [])
     

@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react"
-import axios from "axios"
+import api from "../api"
 
 function Applications() {
     const [applications, setApplications] = useState([])
 
     useEffect(() => {
-        axios.get("http://localhost:8000/applications")
+        api.get("/applications")
             .then(res => setApplications(res.data))
     }, [])
 
