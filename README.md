@@ -134,3 +134,25 @@
 11: CheckViolation error
 - CheckViolation error means that a CheckConstraint error is occurring where the input doesn't match the CheckConstraint list
 - This was caused by the source: "string" because "string" isn't a source within our CheckConstraint list.
+
+Final sprint:
+1. Test isolation
+Test isolation is when you isolate the testing environment away from production — specifically the production database. This prevents test data (fake companies, roles, etc.) from polluting real data, and ensures tests start from a predictable clean state rather than being affected by leftover data from previous runs.
+
+2. pytest fixture and scope="function"
+A pytest fixture sets up something a test needs and tears it down after the test finishes. scope="function" means the fixture runs once per test function — each test gets a completely fresh database created and destroyed just for it. If it were scope="session", all tests would share one database and leftover data from one test could affect the next, breaking isolation.
+
+3. app.dependency_overrides
+app.dependency_overrides lets you swap out any FastAPI dependency for a different one during tests. We use it to replace get_db (which normally connects to the real Postgres database) with a function that returns a SQLite test database session instead. Every route handler that calls Depends(get_db) automatically gets the test database without knowing or caring — the handler code doesn't change at all.
+
+4. SQLite for tests
+SQLite is used because it runs entirely in memory — no server needed, no Docker container required. Using Postgres for tests would mean spinning up a Docker container every time you run the test suite, which is slow and adds complexity. SQLite creates and destroys in milliseconds, making the test suite fast and self-contained. The tradeoff is that SQLite and Postgres have slight differences (like how they handle some constraints), but for testing basic CRUD behavior it's perfectly adequate.
+
+5. conftest.py
+conftest.py is a special pytest file that defines shared fixtures, test engine setup, and the test client. Pytest auto-discovers it without needing an import — any fixture defined inside it is automatically available to every test file in the same directory and subdirectories. It's not a test file itself, it's shared configuration that runs before any tests start.
+
+6. IntegrityError
+An IntegrityError is raised when data violates a database constraint — in this project, when status or source values don't match the CHECK constraint list. Without the handler, an invalid value would cause an unhandled exception that crashed the entire request, returning a confusing raw 500 error with a SQLAlchemy traceback to the client. With the handler, the database rolls back cleanly and the client gets a meaningful 422 response explaining what went wrong. This is the difference between a robust API and a fragile one.
+
+7. Pattern for testing endpoints requiring an existing resource
+Always create the resource you need within the test itself via a POST request, extract the id from the response, then use that id in the subsequent request. Never assume a specific id exists in the database — since each test runs against a fresh database, you must create everything the test depends on from scratch inside that test.
