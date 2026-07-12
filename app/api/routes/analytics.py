@@ -94,7 +94,10 @@ def get_time_in_stage(db: Session = Depends(get_db)):
     result = db.execute(outer_query).all()
 
     return [
-        TimeInStageItem(
-            stage=row.status,
-            avg_days=round(row.avg_time_spent / 86400, 2)  ) for row in result
-    ]  
+    TimeInStageItem(
+        stage=row.status,
+        avg_days=round(row.avg_time_spent / 86400, 2) if row.avg_time_spent is not None else 0.0
+    )
+    for row in result
+    if row.avg_time_spent is not None  # skip stages with no completed transitions
+]
