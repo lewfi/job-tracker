@@ -13,13 +13,13 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
-function Funnel() {
+function Funnel({ refreshKey }) {
     const [data, setData] = useState(null)
 
     useEffect(() => {
         api.get("/analytics/funnel")
             .then(res => setData(res.data))
-    }, [])
+    }, [refreshKey])
     
     // render chart using data
     if (!data) {

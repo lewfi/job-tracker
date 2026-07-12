@@ -14,13 +14,13 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 
-function Weekly() {
+function Weekly({ refreshKey }) {
     const [data, setData] = useState(null)
 
     useEffect(() => {
         api.get("/analytics/weekly")
             .then(res => setData(res.data))
-    }, [])
+    }, [refreshKey])
     
     // render chart using data
     if (!data) {

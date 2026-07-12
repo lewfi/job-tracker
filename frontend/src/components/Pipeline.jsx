@@ -20,13 +20,13 @@ ChartJS.register(
   Legend
 );
 
-function Pipeline() {
+function Pipeline({ refreshKey }) {
     const [data, setData] = useState(null);
 
     useEffect(() => {
         api.get("/analytics/pipeline")
             .then(res => setData(res.data))
-    }, [])
+    }, [refreshKey])
 
     // render chart using data
     if (!data) {

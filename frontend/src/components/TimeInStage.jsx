@@ -13,13 +13,24 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
-function TimeInStage() {
+function formatDays(avgDays) {
+    const hours = avgDays * 24
+    if (hours < 1) {
+        return "< 1 hour"
+    }
+    if (avgDays < 1) {
+        return `${Math.round(hours)} hours`
+    }
+    return `${avgDays.toFixed(1)} days`
+}
+
+function TimeInStage({ refreshKey }) {
     const [data, setData] = useState(null)
 
     useEffect(() => {
         api.get("/analytics/time-in-stage")
             .then(res => setData(res.data))
-    }, [])
+    }, [refreshKey])
 
     // render chart using data
     if (!data) {
@@ -36,7 +47,7 @@ function TimeInStage() {
             },
         ],
     }
-    
+
     const options = {
         responsive: true,
         plugins: {
@@ -47,10 +58,24 @@ function TimeInStage() {
                 display: true,
                 text: "Average Time in Stage Chart",
             },
+            tooltip: {
+                callbacks: {
+                    label: (context) => formatDays(context.parsed.y),
+                },
+            },
         },
     }
-    
-    return <Bar data={chartData} options={options} />
+
+    return (
+        <div>
+            <Bar data={chartData} options={options} />
+            <ul>
+                {data.map(item => (
+                    <li key={item.stage}>{item.stage}: {formatDays(item.avg_days)}</li>
+                ))}
+            </ul>
+        </div>
+    )
 }
 
 export default TimeInStage
