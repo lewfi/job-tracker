@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends
 from app.api.deps import get_db
 from app.models.application import Application
+from app.models.status_history import StatusHistory
 from app.schemas.analytics import PipelineItem, FunnelItem, WeeklyItem, TimeInStageItem
 
 router = APIRouter()
@@ -58,3 +59,42 @@ def get_weekly(db: Session = Depends(get_db)):
             count=row.count
         ) for row in result
     ]
+
+# Get average time in stage for analytics
+@router.get("/time-in-stage", response_model=list[TimeInStageItem])
+def get_time_in_stage(db: Session = Depends(get_db)):
+    # Define LEAD window function
+    next_changed_at = func.lead(StatusHistory.changed_at).over(
+        partition_by=StatusHistory.application_id,
+        order_by=StatusHistory.changed_at
+    ).label("next_changed_at")
+
+    # Build inner query for each history row to get status and time spent
+    inner_query = (
+        select(
+            StatusHistory.application_id,
+            StatusHistory.status,
+            StatusHistory.changed_at,
+            next_changed_at,
+            (func.extract('epoch', next_changed_at) - func.extract('epoch', StatusHistory.changed_at)).label("time_spent")
+        )
+        .subquery()
+    )
+
+    # Wrap outer query for average time_spent per status
+    outer_query = (
+        select(
+            inner_query.c.status,
+            func.avg(inner_query.c.time_spent).label("avg_time_spent")
+        )
+        .group_by(inner_query.c.status)
+    )
+
+    # Execute and build response
+    result = db.execute(outer_query).all()
+
+    return [
+        TimeInStageItem(
+            stage=row.status,
+            avg_days=round(row.avg_time_spent / 86400, 2)  ) for row in result
+    ]  
