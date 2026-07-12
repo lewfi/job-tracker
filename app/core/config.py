@@ -6,5 +6,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8"
     )
     DATABASE_URL: str = "postgresql://postgres:JOBTRACK101@db:5432/job_tracker"
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080
 
 settings = Settings()

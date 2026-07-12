@@ -1,19 +1,21 @@
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_user
 from app.models.application import Application
 from app.models.status_history import StatusHistory
+from app.models.user import User
 from app.schemas.analytics import PipelineItem, FunnelItem, WeeklyItem, TimeInStageItem
 
 router = APIRouter()
 
 # Get pipelines for analytics
 @router.get("/pipeline", response_model=list[PipelineItem])
-def get_pipelines(db: Session = Depends(get_db)):
+def get_pipelines(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Select status and count, group by status
     result = db.execute(
         select(Application.status, func.count().label("count"))
+        .where(Application.user_id == current_user.id)
         .group_by(Application.status)
     ).all()
 
@@ -21,9 +23,10 @@ def get_pipelines(db: Session = Depends(get_db)):
 
 # Get funnel for analytics
 @router.get("/funnel", response_model=list[FunnelItem])
-def get_funnel(db: Session = Depends(get_db)):
+def get_funnel(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = db.execute(
         select(Application.status, func.count().label("count"))
+        .where(Application.user_id == current_user.id)
         .group_by(Application.status)
     ).all()
 
@@ -44,11 +47,12 @@ def get_funnel(db: Session = Depends(get_db)):
 
 # Get weekly applications for analytics
 @router.get("/weekly", response_model=list[WeeklyItem])
-def get_weekly(db: Session = Depends(get_db)):
+def get_weekly(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     week_col = func.date_trunc('week', Application.date_applied).label('week')
 
     result = db.execute(
         select(week_col, func.count().label("count"))
+        .where(Application.user_id == current_user.id)
         .group_by(week_col)
         .order_by(week_col)
     ).all()
@@ -62,14 +66,14 @@ def get_weekly(db: Session = Depends(get_db)):
 
 # Get average time in stage for analytics
 @router.get("/time-in-stage", response_model=list[TimeInStageItem])
-def get_time_in_stage(db: Session = Depends(get_db)):
+def get_time_in_stage(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Define LEAD window function
     next_changed_at = func.lead(StatusHistory.changed_at).over(
         partition_by=StatusHistory.application_id,
         order_by=StatusHistory.changed_at
     ).label("next_changed_at")
 
-    # Build inner query for each history row to get status and time spent
+    # Build inner query for each history row to get status and time spent, scoped to the current user's applications
     inner_query = (
         select(
             StatusHistory.application_id,
@@ -78,6 +82,9 @@ def get_time_in_stage(db: Session = Depends(get_db)):
             next_changed_at,
             (func.extract('epoch', next_changed_at) - func.extract('epoch', StatusHistory.changed_at)).label("time_spent")
         )
+        .select_from(StatusHistory)
+        .join(Application, Application.id == StatusHistory.application_id)
+        .where(Application.user_id == current_user.id)
         .subquery()
     )
 

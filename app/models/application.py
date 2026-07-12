@@ -2,11 +2,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from datetime import datetime, date, timezone
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import CheckConstraint, String, Integer, Date, DateTime
+from sqlalchemy import CheckConstraint, String, Integer, Date, DateTime, ForeignKey
 from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.status_history import StatusHistory
+    from app.models.user import User
 
 default = lambda: datetime.now(timezone.utc)
 
@@ -20,6 +21,7 @@ class Application(Base):
 
     # Core fields
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     company: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -43,3 +45,4 @@ class Application(Base):
 
     # Relationship
     status_history: Mapped[list["StatusHistory"]] = relationship("StatusHistory", back_populates="application", cascade="all, delete-orphan")
+    user: Mapped["User"] = relationship("User", back_populates="applications")
