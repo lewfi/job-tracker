@@ -34,7 +34,7 @@ function Applications() {
             return
         }
         setError("")
-        api.post("/applications/", {
+        api.post("/applications", {
             ...form,
             salary_min: form.salary_min ? parseInt(form.salary_min) : null,
             salary_max: form.salary_max ? parseInt(form.salary_max) : null,
