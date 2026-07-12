@@ -13,7 +13,10 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite's default port
+    allow_origins=[
+        "http://localhost:5173",
+        "https://job-tracker-6qjb.vercel.app"
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
