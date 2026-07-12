@@ -9,7 +9,7 @@ async def lifespan(app: FastAPI):
     yield
     print("Application is shutting down...")
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, redirect_slashes=False)
 
 app.add_middleware(
     CORSMiddleware,
