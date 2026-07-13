@@ -5,7 +5,7 @@ import { COLORS, MONO } from "../theme"
 const inputStyle = {
     border: `1px solid ${COLORS.border}`,
     borderRadius: "2px",
-    padding: "10px 12px",
+    padding: "12px",
     fontSize: "13.5px",
     width: "100%",
 }

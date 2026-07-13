@@ -4,7 +4,7 @@ import { COLORS, MONO, STATUSES, SOURCES, STATUS_LABELS, SOURCE_LABELS } from ".
 const inputStyle = {
     border: `1px solid ${COLORS.border}`,
     borderRadius: "2px",
-    padding: "10px 12px",
+    padding: "12px",
     fontSize: "13.5px",
     width: "100%",
 }
@@ -12,7 +12,7 @@ const inputStyle = {
 const selectStyle = {
     border: `1px solid ${COLORS.border}`,
     borderRadius: "2px",
-    padding: "10px 12px",
+    padding: "12px",
     fontSize: "13px",
     width: "100%",
     background: "#fff",
