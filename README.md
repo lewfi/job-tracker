@@ -1,11 +1,3 @@
-# Job Tracker
-
-A full-stack job application tracker I built to have a real, end-to-end project to talk about in SWE interviews — FastAPI + Postgres backend with actual schema design decisions behind it, a React frontend, JWT auth, and a small analytics layer that isn't just a CRUD wrapper. This README is written for one reader: me, three months from now, trying to remember why I made every choice below before I walk into an interview and someone asks "tell me about a project you built."
-
-## What This Project Is
-
-A job application tracker that lets a user log applications (company, role, status, source, dates, salary range, notes), move them through a pipeline (applied → screen → onsite → offer/rejected/withdrawn), and see analytics over that pipeline — status breakdown, funnel conversion, weekly application volume, and average time spent in each stage. I built it while job hunting for SWE roles (FinTech focus, applying out of UC Santa Cruz) specifically so I'd have a project with real architectural decisions in it — not another to-do list — and so I could dogfood it on my own job search while I built it.
-
 ## Live Demo
 
 - **Frontend:** https://job-tracker-6qjb.vercel.app
