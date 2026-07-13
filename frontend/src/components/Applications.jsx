@@ -17,6 +17,12 @@ const EMPTY_FORM = {
     notes: ""
 }
 
+function formatDate(dateStr) {
+    if (!dateStr) return ""
+    const [year, month, day] = dateStr.split("-").map(Number)
+    return new Date(year, month - 1, day).toLocaleDateString()
+}
+
 function toEditForm(app) {
     return {
         company: app.company ?? "",
@@ -247,7 +253,7 @@ const Applications = forwardRef(function Applications({ onDataChange }, ref) {
                                     <div style={{ fontSize: "12px", color: COLORS.muted, marginTop: "2px" }}>{app.location || "—"}</div>
                                 </div>
                                 <div style={{ fontSize: "12px", color: COLORS.muted, textTransform: "uppercase", fontFamily: MONO }}>{app.source}</div>
-                                <div style={{ fontSize: "12px", color: COLORS.muted, fontFamily: MONO }}>{new Date(app.date_applied).toLocaleDateString()}</div>
+                                <div style={{ fontSize: "12px", color: COLORS.muted, fontFamily: MONO }}>{formatDate(app.date_applied)}</div>
                                 <div onClick={e => e.stopPropagation()}>
                                     <select value={app.status} onChange={e => handleStatusChange(app.id, e.target.value)}
                                         style={{ border: `1px solid ${meta.color}`, background: meta.bg, color: meta.color, borderRadius: "2px", padding: "5px 8px", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", fontFamily: MONO }}>
