@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from "react"
 import api from "../api"
+import ApplicationDrawer from "./ApplicationDrawer"
+import { COLORS, MONO, STATUSES, STATUS_META, STATUS_LABELS } from "../theme"
 
-const STATUSES = ["applied", "screen", "onsite", "offer", "rejected", "withdrawn"]
-const SOURCES = ["linkedin", "indeed", "company_website", "referral", "handshake", "other"]
 const PAGE_SIZE = 10
 
 const EMPTY_FORM = {
@@ -31,19 +31,24 @@ function toEditForm(app) {
     }
 }
 
-function Applications({ onDataChange }) {
-    const [applications, setApplications] = useState([])
-    const [form, setForm] = useState(EMPTY_FORM)
-    const [error, setError] = useState("")
+const gridCols = "1.6fr 1.6fr 1fr 1fr 1.2fr 130px 40px"
 
+const headerLabelStyle = {
+    fontSize: "11px", fontWeight: 600, fontFamily: MONO, color: COLORS.muted, letterSpacing: ".03em",
+}
+
+const Applications = forwardRef(function Applications({ onDataChange }, ref) {
+    const [applications, setApplications] = useState([])
+
+    const [search, setSearch] = useState("")
     const [statusFilter, setStatusFilter] = useState("all")
     const [sortField, setSortField] = useState("date_applied")
     const [sortDir, setSortDir] = useState("desc")
     const [page, setPage] = useState(1)
 
+    const [addDrawerOpen, setAddDrawerOpen] = useState(false)
     const [editingApp, setEditingApp] = useState(null)
-    const [editForm, setEditForm] = useState(null)
-    const [editError, setEditError] = useState("")
+    const [openMenuId, setOpenMenuId] = useState(null)
 
     const fetchApplications = () => {
         api.get("/applications/")
@@ -54,66 +59,56 @@ function Applications({ onDataChange }) {
         fetchApplications()
     }, [])
 
+    useImperativeHandle(ref, () => ({
+        openAddDrawer: () => setAddDrawerOpen(true),
+    }))
+
     const notifyChange = () => {
         fetchApplications()
         onDataChange?.()
     }
 
-    const handleSubmit = () => {
-        if (!form.company || !form.role || !form.date_applied) {
-            setError("Company, role, and date applied are required.")
-            return
+    const handleAdd = (formValues) => {
+        if (!formValues.company || !formValues.role || !formValues.date_applied) {
+            return Promise.reject("Company, role, and date applied are required.")
         }
-        setError("")
-        api.post("/applications/", {
-            ...form,
-            salary_min: form.salary_min ? parseInt(form.salary_min) : null,
-            salary_max: form.salary_max ? parseInt(form.salary_max) : null,
+        return api.post("/applications/", {
+            ...formValues,
+            salary_min: formValues.salary_min ? parseInt(formValues.salary_min) : null,
+            salary_max: formValues.salary_max ? parseInt(formValues.salary_max) : null,
         })
-        .then(() => {
-            notifyChange()
-            setForm(EMPTY_FORM)
+            .then(() => {
+                notifyChange()
+                setAddDrawerOpen(false)
+            })
+            .catch(() => Promise.reject("Failed to create application. Check your inputs."))
+    }
+
+    const handleEditSubmit = (formValues) => {
+        if (!formValues.company || !formValues.role || !formValues.date_applied) {
+            return Promise.reject("Company, role, and date applied are required.")
+        }
+        return api.patch(`/applications/${editingApp.id}`, {
+            ...formValues,
+            salary_min: formValues.salary_min ? parseInt(formValues.salary_min) : null,
+            salary_max: formValues.salary_max ? parseInt(formValues.salary_max) : null,
         })
-        .catch(() => setError("Failed to create application. Check your inputs."))
+            .then(() => {
+                notifyChange()
+                setEditingApp(null)
+            })
+            .catch(() => Promise.reject("Failed to update application. Check your inputs."))
     }
 
     const handleDelete = (id) => {
         api.delete(`/applications/${id}`)
             .then(() => notifyChange())
+        setOpenMenuId(null)
     }
 
     const handleStatusChange = (id, newStatus) => {
         api.patch(`/applications/${id}`, { status: newStatus })
             .then(() => notifyChange())
-    }
-
-    const openEditModal = (app) => {
-        setEditingApp(app)
-        setEditForm(toEditForm(app))
-        setEditError("")
-    }
-
-    const closeEditModal = () => {
-        setEditingApp(null)
-        setEditForm(null)
-        setEditError("")
-    }
-
-    const handleEditSave = () => {
-        if (!editForm.company || !editForm.role || !editForm.date_applied) {
-            setEditError("Company, role, and date applied are required.")
-            return
-        }
-        api.patch(`/applications/${editingApp.id}`, {
-            ...editForm,
-            salary_min: editForm.salary_min ? parseInt(editForm.salary_min) : null,
-            salary_max: editForm.salary_max ? parseInt(editForm.salary_max) : null,
-        })
-        .then(() => {
-            notifyChange()
-            closeEditModal()
-        })
-        .catch(() => setEditError("Failed to update application. Check your inputs."))
     }
 
     const toggleSort = (field) => {
@@ -131,10 +126,27 @@ function Applications({ onDataChange }) {
         setPage(1)
     }
 
+    const handleSearchChange = (value) => {
+        setSearch(value)
+        setPage(1)
+    }
+
+    const clearFilters = () => {
+        setStatusFilter("all")
+        setSearch("")
+        setPage(1)
+    }
+
     const visibleApplications = useMemo(() => {
         let result = applications
         if (statusFilter !== "all") {
             result = result.filter(app => app.status === statusFilter)
+        }
+        const searchLower = search.trim().toLowerCase()
+        if (searchLower) {
+            result = result.filter(app =>
+                app.company.toLowerCase().includes(searchLower) || app.role.toLowerCase().includes(searchLower)
+            )
         }
         result = [...result].sort((a, b) => {
             const aVal = a[sortField] ?? ""
@@ -144,7 +156,7 @@ function Applications({ onDataChange }) {
             return 0
         })
         return result
-    }, [applications, statusFilter, sortField, sortDir])
+    }, [applications, statusFilter, search, sortField, sortDir])
 
     const totalPages = Math.max(1, Math.ceil(visibleApplications.length / PAGE_SIZE))
     const currentPage = Math.min(page, totalPages)
@@ -155,160 +167,139 @@ function Applications({ onDataChange }) {
 
     const sortIndicator = (field) => sortField === field ? (sortDir === "asc" ? " ▲" : " ▼") : ""
 
+    const totalCount = applications.length
+    const activeCount = applications.filter(a => !["rejected", "withdrawn"].includes(a.status)).length
+    const offerCount = applications.filter(a => a.status === "offer").length
+
+    const noAppsAtAll = totalCount === 0
+    const noResults = !noAppsAtAll && visibleApplications.length === 0
+
     return (
         <div>
-            <h3>Add Application</h3>
-            {error && <p style={{ color: "red" }}>{error}</p>}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1rem" }}>
-                <input placeholder="Company *" value={form.company}
-                    onChange={e => setForm({ ...form, company: e.target.value })} />
-                <input placeholder="Role *" value={form.role}
-                    onChange={e => setForm({ ...form, role: e.target.value })} />
-                <input type="date" value={form.date_applied}
-                    onChange={e => setForm({ ...form, date_applied: e.target.value })} />
-                <select value={form.source}
-                    onChange={e => setForm({ ...form, source: e.target.value })}>
-                    {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select value={form.status}
-                    onChange={e => setForm({ ...form, status: e.target.value })}>
-                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <input placeholder="Location" value={form.location}
-                    onChange={e => setForm({ ...form, location: e.target.value })} />
-                <input placeholder="Salary Min" type="number" value={form.salary_min}
-                    onChange={e => setForm({ ...form, salary_min: e.target.value })} />
-                <input placeholder="Salary Max" type="number" value={form.salary_max}
-                    onChange={e => setForm({ ...form, salary_max: e.target.value })} />
-                <input placeholder="Notes" value={form.notes}
-                    onChange={e => setForm({ ...form, notes: e.target.value })}
-                    style={{ gridColumn: "span 2" }} />
+            {/* summary strip */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", border: `1px solid ${COLORS.border}`, marginBottom: "24px" }}>
+                <div style={{ padding: "18px 22px", borderRight: `1px solid ${COLORS.border}` }}>
+                    <div style={{ fontSize: "11px", fontFamily: MONO, color: COLORS.muted, letterSpacing: ".04em", marginBottom: "6px" }}>TOTAL APPLICATIONS</div>
+                    <div style={{ fontSize: "26px", fontWeight: 600, fontFamily: MONO }}>{totalCount}</div>
+                </div>
+                <div style={{ padding: "18px 22px", borderRight: `1px solid ${COLORS.border}` }}>
+                    <div style={{ fontSize: "11px", fontFamily: MONO, color: COLORS.muted, letterSpacing: ".04em", marginBottom: "6px" }}>ACTIVE</div>
+                    <div style={{ fontSize: "26px", fontWeight: 600, fontFamily: MONO, color: COLORS.accent }}>{activeCount}</div>
+                </div>
+                <div style={{ padding: "18px 22px" }}>
+                    <div style={{ fontSize: "11px", fontFamily: MONO, color: COLORS.muted, letterSpacing: ".04em", marginBottom: "6px" }}>OFFERS</div>
+                    <div style={{ fontSize: "26px", fontWeight: 600, fontFamily: MONO }}>{offerCount}</div>
+                </div>
             </div>
-            <button onClick={handleSubmit}>Add Application</button>
 
-            <h3 style={{ marginTop: "2rem" }}>Your Applications</h3>
-
-            <div style={{ marginBottom: "1rem" }}>
-                <label>
-                    Filter by status:{" "}
-                    <select value={statusFilter} onChange={e => handleStatusFilterChange(e.target.value)}>
-                        <option value="all">All</option>
-                        {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {/* filter bar */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", marginBottom: "16px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: "280px" }}>
+                    <input value={search} onChange={e => handleSearchChange(e.target.value)} placeholder="Search company or role…"
+                        style={{ flex: 1, maxWidth: "320px", border: `1px solid ${COLORS.border}`, borderRadius: "2px", padding: "9px 12px", fontSize: "13px" }} />
+                    <select value={statusFilter} onChange={e => handleStatusFilterChange(e.target.value)}
+                        style={{ border: `1px solid ${COLORS.border}`, background: "#fff", borderRadius: "2px", padding: "9px 10px", fontSize: "12.5px", fontFamily: MONO }}>
+                        <option value="all">ALL STATUSES</option>
+                        {STATUSES.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
                     </select>
-                </label>
+                </div>
+                <span style={{ fontSize: "12px", color: COLORS.muted, fontFamily: MONO, whiteSpace: "nowrap" }}>
+                    {visibleApplications.length} OF {totalCount}
+                </span>
             </div>
 
-            {applications.length === 0 ? (
-                <p>No applications yet — add one above!</p>
-            ) : visibleApplications.length === 0 ? (
-                <p>No applications match the selected filter.</p>
-            ) : (
-                <>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead>
-                            <tr>
-                                <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "0.5rem", cursor: "pointer" }}
-                                    onClick={() => toggleSort("company")}>
-                                    Company{sortIndicator("company")}
-                                </th>
-                                <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "0.5rem" }}>Role</th>
-                                <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "0.5rem" }}>Status</th>
-                                <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "0.5rem", cursor: "pointer" }}
-                                    onClick={() => toggleSort("date_applied")}>
-                                    Date Applied{sortIndicator("date_applied")}
-                                </th>
-                                <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "0.5rem" }}>Source</th>
-                                <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "0.5rem" }}>Location</th>
-                                <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "0.5rem" }}>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {pagedApplications.map(app => (
-                                <tr key={app.id} onClick={() => openEditModal(app)} style={{ cursor: "pointer" }}>
-                                    <td style={{ padding: "0.5rem" }}>{app.company}</td>
-                                    <td style={{ padding: "0.5rem" }}>{app.role}</td>
-                                    <td style={{ padding: "0.5rem" }} onClick={e => e.stopPropagation()}>
-                                        <select value={app.status}
-                                            onChange={e => handleStatusChange(app.id, e.target.value)}>
-                                            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                                        </select>
-                                    </td>
-                                    <td style={{ padding: "0.5rem" }}>{new Date(app.date_applied).toLocaleDateString()}</td>
-                                    <td style={{ padding: "0.5rem" }}>{app.source}</td>
-                                    <td style={{ padding: "0.5rem" }}>{app.location}</td>
-                                    <td style={{ padding: "0.5rem" }} onClick={e => e.stopPropagation()}>
-                                        <button
-                                            onClick={() => handleDelete(app.id)}
-                                            style={{ color: "red", cursor: "pointer" }}>
-                                            Delete
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginTop: "1rem" }}>
-                        <button disabled={currentPage <= 1} onClick={() => setPage(p => p - 1)}>Prev</button>
-                        <span>Page {currentPage} of {totalPages}</span>
-                        <button disabled={currentPage >= totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
-                    </div>
-                </>
+            {noAppsAtAll && (
+                <div style={{ border: `1px dashed ${COLORS.border}`, padding: "64px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "15px", fontWeight: 600, fontFamily: MONO, marginBottom: "6px" }}>No applications yet</div>
+                    <div style={{ fontSize: "13.5px", color: COLORS.muted, marginBottom: "20px" }}>Add your first application to start tracking your pipeline.</div>
+                    <button onClick={() => setAddDrawerOpen(true)} style={{ background: COLORS.accent, color: "#fff", border: "none", padding: "11px 20px", borderRadius: "2px", fontSize: "13px", fontWeight: 600, fontFamily: MONO }}>ADD APPLICATION</button>
+                </div>
             )}
 
-            {editingApp && (
-                <div
-                    onClick={closeEditModal}
-                    style={{
-                        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-                        background: "rgba(0,0,0,0.5)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        zIndex: 1000
-                    }}
-                >
-                    <div
-                        onClick={e => e.stopPropagation()}
-                        style={{
-                            background: "white", color: "black", padding: "1.5rem",
-                            borderRadius: "8px", width: "90%", maxWidth: "500px"
-                        }}
-                    >
-                        <h3>Edit Application</h3>
-                        {editError && <p style={{ color: "red" }}>{editError}</p>}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1rem" }}>
-                            <input placeholder="Company *" value={editForm.company}
-                                onChange={e => setEditForm({ ...editForm, company: e.target.value })} />
-                            <input placeholder="Role *" value={editForm.role}
-                                onChange={e => setEditForm({ ...editForm, role: e.target.value })} />
-                            <input type="date" value={editForm.date_applied}
-                                onChange={e => setEditForm({ ...editForm, date_applied: e.target.value })} />
-                            <select value={editForm.source}
-                                onChange={e => setEditForm({ ...editForm, source: e.target.value })}>
-                                {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                            <select value={editForm.status}
-                                onChange={e => setEditForm({ ...editForm, status: e.target.value })}>
-                                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                            <input placeholder="Location" value={editForm.location}
-                                onChange={e => setEditForm({ ...editForm, location: e.target.value })} />
-                            <input placeholder="Salary Min" type="number" value={editForm.salary_min}
-                                onChange={e => setEditForm({ ...editForm, salary_min: e.target.value })} />
-                            <input placeholder="Salary Max" type="number" value={editForm.salary_max}
-                                onChange={e => setEditForm({ ...editForm, salary_max: e.target.value })} />
-                            <input placeholder="Notes" value={editForm.notes}
-                                onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
-                                style={{ gridColumn: "span 2" }} />
-                        </div>
-                        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                            <button onClick={closeEditModal}>Cancel</button>
-                            <button onClick={handleEditSave}>Save</button>
-                        </div>
+            {noResults && (
+                <div style={{ border: `1px dashed ${COLORS.border}`, padding: "64px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "15px", fontWeight: 600, fontFamily: MONO, marginBottom: "6px" }}>No applications match your search</div>
+                    <div style={{ fontSize: "13.5px", color: COLORS.muted, marginBottom: "20px" }}>Try a different status or search term.</div>
+                    <button onClick={clearFilters} style={{ background: COLORS.accent, color: "#fff", border: "none", padding: "11px 20px", borderRadius: "2px", fontSize: "13px", fontWeight: 600, fontFamily: MONO }}>CLEAR FILTERS</button>
+                </div>
+            )}
+
+            {!noAppsAtAll && !noResults && (
+                <div>
+                    <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: "14px", padding: "0 4px 10px", borderBottom: `1px solid ${COLORS.border}` }}>
+                        <div style={{ ...headerLabelStyle, cursor: "pointer" }} onClick={() => toggleSort("company")}>COMPANY{sortIndicator("company")}</div>
+                        <div style={headerLabelStyle}>ROLE / LOCATION</div>
+                        <div style={headerLabelStyle}>SOURCE</div>
+                        <div style={{ ...headerLabelStyle, cursor: "pointer" }} onClick={() => toggleSort("date_applied")}>DATE{sortIndicator("date_applied")}</div>
+                        <div style={headerLabelStyle}>STATUS</div>
+                        <div></div>
+                        <div></div>
+                    </div>
+
+                    {pagedApplications.map(app => {
+                        const meta = STATUS_META[app.status]
+                        return (
+                            <div key={app.id} onClick={() => setEditingApp(app)}
+                                style={{ display: "grid", gridTemplateColumns: gridCols, gap: "14px", alignItems: "center", padding: "16px 4px", borderBottom: `1px solid ${COLORS.border}`, cursor: "pointer" }}>
+                                <div style={{ fontSize: "14px", fontWeight: 600 }}>{app.company}</div>
+                                <div>
+                                    <div style={{ fontSize: "13px" }}>{app.role}</div>
+                                    <div style={{ fontSize: "12px", color: COLORS.muted, marginTop: "2px" }}>{app.location || "—"}</div>
+                                </div>
+                                <div style={{ fontSize: "12px", color: COLORS.muted, textTransform: "uppercase", fontFamily: MONO }}>{app.source}</div>
+                                <div style={{ fontSize: "12px", color: COLORS.muted, fontFamily: MONO }}>{new Date(app.date_applied).toLocaleDateString()}</div>
+                                <div onClick={e => e.stopPropagation()}>
+                                    <select value={app.status} onChange={e => handleStatusChange(app.id, e.target.value)}
+                                        style={{ border: `1px solid ${meta.color}`, background: meta.bg, color: meta.color, borderRadius: "2px", padding: "5px 8px", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", fontFamily: MONO }}>
+                                        {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s].toUpperCase()}</option>)}
+                                    </select>
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "flex-end" }} onClick={e => e.stopPropagation()}>
+                                    {openMenuId === app.id && (
+                                        <button onClick={() => handleDelete(app.id)}
+                                            style={{ background: COLORS.dark, color: "#fff", border: "none", borderRadius: "2px", padding: "7px 12px", fontSize: "11px", fontWeight: 600, fontFamily: MONO }}>
+                                            CONFIRM DELETE
+                                        </button>
+                                    )}
+                                </div>
+                                <button onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === app.id ? null : app.id) }}
+                                    style={{ background: "none", border: "none", color: COLORS.dark, fontSize: "16px", padding: "4px 8px", justifySelf: "end" }}>···</button>
+                            </div>
+                        )
+                    })}
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "18px" }}>
+                        <button disabled={currentPage <= 1} onClick={() => setPage(p => p - 1)}
+                            style={{ background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: "2px", padding: "8px 14px", fontSize: "12px", fontFamily: MONO, color: COLORS.muted }}>PREV</button>
+                        <span style={{ fontSize: "12px", color: COLORS.muted, fontFamily: MONO }}>PAGE {currentPage} OF {totalPages}</span>
+                        <button disabled={currentPage >= totalPages} onClick={() => setPage(p => p + 1)}
+                            style={{ background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: "2px", padding: "8px 14px", fontSize: "12px", fontFamily: MONO, color: COLORS.muted }}>NEXT</button>
                     </div>
                 </div>
             )}
+
+            {addDrawerOpen && (
+                <ApplicationDrawer
+                    title="ADD APPLICATION"
+                    submitLabel="ADD"
+                    initialForm={EMPTY_FORM}
+                    onClose={() => setAddDrawerOpen(false)}
+                    onSubmit={handleAdd}
+                />
+            )}
+
+            {editingApp && (
+                <ApplicationDrawer
+                    key={editingApp.id}
+                    title="EDIT APPLICATION"
+                    submitLabel="SAVE"
+                    initialForm={toEditForm(editingApp)}
+                    onClose={() => setEditingApp(null)}
+                    onSubmit={handleEditSubmit}
+                />
+            )}
         </div>
     )
-}
+})
 
 export default Applications

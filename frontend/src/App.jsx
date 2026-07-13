@@ -1,17 +1,18 @@
-import { useState, useCallback } from "react"
-import Pipeline from "./components/Pipeline"
-import Funnel from "./components/Funnel"
-import Weekly from "./components/Weekly"
-import TimeInStage from "./components/TimeInStage"
+import { useState, useCallback, useRef } from "react"
 import Applications from "./components/Applications"
+import Analytics from "./components/Analytics"
 import Login from "./components/Login"
 import Register from "./components/Register"
+import Logo from "./components/Logo"
+import { COLORS, MONO } from "./theme"
 
 function App() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [token, setToken] = useState(() => localStorage.getItem("token"))
   const [userEmail, setUserEmail] = useState(() => localStorage.getItem("userEmail"))
   const [showRegister, setShowRegister] = useState(false)
+  const [tab, setTab] = useState("apps")
+  const applicationsRef = useRef(null)
 
   const handleDataChange = useCallback(() => {
     setRefreshKey(key => key + 1)
@@ -34,36 +35,61 @@ function App() {
 
   if (!token) {
     return (
-      <div style={{ padding: "2rem", maxWidth: "400px", margin: "0 auto" }}>
-        <h1>Job Tracker</h1>
-        {showRegister ? (
-          <Register onAuthSuccess={handleAuthSuccess} onSwitchToLogin={() => setShowRegister(false)} />
-        ) : (
-          <Login onAuthSuccess={handleAuthSuccess} onSwitchToRegister={() => setShowRegister(true)} />
-        )}
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "28px", background: "#fff" }}>
+        <Logo />
+        <div style={{ width: "360px", maxWidth: "90vw" }}>
+          {showRegister ? (
+            <Register onAuthSuccess={handleAuthSuccess} onSwitchToLogin={() => setShowRegister(false)} />
+          ) : (
+            <Login onAuthSuccess={handleAuthSuccess} onSwitchToRegister={() => setShowRegister(true)} />
+          )}
+        </div>
       </div>
     )
   }
 
+  const tabStyle = (active) => ({
+    background: "none", border: "none", padding: "0 0 12px", fontSize: "13.5px", fontWeight: 600,
+    fontFamily: MONO, letterSpacing: ".03em", color: active ? COLORS.dark : COLORS.mutedLight,
+    borderBottom: `2px solid ${active ? COLORS.accent : "transparent"}`, cursor: "pointer",
+  })
+
   return (
-    <div style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>Job Tracker Dashboard</h1>
-        <div>
-          <span style={{ marginRight: "1rem" }}>{userEmail}</span>
-          <button onClick={handleLogout}>Log out</button>
+    <div style={{ minHeight: "100vh", background: "#fff", color: COLORS.dark }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 10, background: "#fff", borderBottom: `1px solid ${COLORS.border}` }}>
+        <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "20px 32px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+            <Logo />
+            <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
+              <span style={{ fontSize: "13px", color: COLORS.muted, fontFamily: MONO }}>{userEmail}</span>
+              <button onClick={() => applicationsRef.current?.openAddDrawer()} style={{
+                background: COLORS.accent, color: "#fff", border: "none", padding: "11px 20px", borderRadius: "2px",
+                fontSize: "13px", fontWeight: 600, fontFamily: MONO, letterSpacing: ".02em",
+                display: "flex", alignItems: "center", gap: "8px",
+              }}>
+                <span style={{ fontSize: "15px", lineHeight: 1 }}>+</span> ADD APPLICATION
+              </button>
+              <button onClick={handleLogout} style={{
+                background: "#fff", color: COLORS.dark, border: `1px solid ${COLORS.border}`, padding: "10px 16px",
+                borderRadius: "2px", fontSize: "12px", fontFamily: MONO,
+              }}>LOG OUT</button>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "28px" }}>
+            <button onClick={() => setTab("apps")} style={tabStyle(tab === "apps")}>APPLICATIONS</button>
+            <button onClick={() => setTab("analytics")} style={tabStyle(tab === "analytics")}>ANALYTICS</button>
+          </div>
         </div>
       </div>
-      <h2>Applications</h2>
-      <Applications onDataChange={handleDataChange} />
-      <h2>Pipeline</h2>
-      <Pipeline refreshKey={refreshKey} />
-      <h2>Funnel</h2>
-      <Funnel refreshKey={refreshKey} />
-      <h2>Weekly</h2>
-      <Weekly refreshKey={refreshKey} />
-      <h2>Time in Stage</h2>
-      <TimeInStage refreshKey={refreshKey} />
+
+      <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "28px 32px 80px" }}>
+        <div style={{ display: tab === "apps" ? "block" : "none" }}>
+          <Applications ref={applicationsRef} onDataChange={handleDataChange} />
+        </div>
+        <div style={{ display: tab === "analytics" ? "block" : "none" }}>
+          <Analytics refreshKey={refreshKey} />
+        </div>
+      </div>
     </div>
   )
 }

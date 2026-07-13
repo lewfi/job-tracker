@@ -1,17 +1,6 @@
 import { useState, useEffect } from "react"
 import api from "../api"
-import { Bar } from "react-chartjs-2"
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js"
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
+import { COLORS, MONO, STATUS_LABELS } from "../theme"
 
 function formatDays(avgDays) {
     const hours = avgDays * 24
@@ -32,48 +21,36 @@ function TimeInStage({ refreshKey }) {
             .then(res => setData(res.data))
     }, [refreshKey])
 
-    // render chart using data
     if (!data) {
-        return <div>Loading...</div>
+        return <div style={{ padding: "24px", fontFamily: MONO, fontSize: "12px", color: COLORS.muted }}>Loading…</div>
     }
 
-    const chartData = {
-        labels: data.map(item => item.stage),
-        datasets: [
-            {
-                label: "Average Time in Stage (days)",
-                data: data.map(item => item.avg_days),
-                backgroundColor: "rgba(255, 206, 86, 0.6)",
-            },
-        ],
-    }
-
-    const options = {
-        responsive: true,
-        plugins: {
-            legend: {
-                position: "top",
-            },
-            title: {
-                display: true,
-                text: "Average Time in Stage Chart",
-            },
-            tooltip: {
-                callbacks: {
-                    label: (context) => formatDays(context.parsed.y),
-                },
-            },
-        },
-    }
+    const maxDays = Math.max(1, ...data.map(row => row.avg_days))
 
     return (
-        <div>
-            <Bar data={chartData} options={options} />
-            <ul>
-                {data.map(item => (
-                    <li key={item.stage}>{item.stage}: {formatDays(item.avg_days)}</li>
-                ))}
-            </ul>
+        <div style={{ padding: "24px" }}>
+            <div style={{ fontSize: "13px", fontWeight: 600, fontFamily: MONO, letterSpacing: ".02em", marginBottom: "2px" }}>AVG. TIME IN STAGE</div>
+            <div style={{ fontSize: "12px", color: COLORS.muted, marginBottom: "18px" }}>Days spent before moving to the next stage</div>
+            {data.length === 0 ? (
+                <div style={{ fontSize: "12px", color: COLORS.muted, fontFamily: MONO }}>No completed transitions yet.</div>
+            ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "11px" }}>
+                    {data.map(row => {
+                        const pct = Math.max(Math.round((row.avg_days / maxDays) * 100), 4)
+                        return (
+                            <div key={row.stage}>
+                                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "4px", fontFamily: MONO }}>
+                                    <span>{(STATUS_LABELS[row.stage] ?? row.stage).toUpperCase()}</span>
+                                    <span>{formatDays(row.avg_days)}</span>
+                                </div>
+                                <div style={{ height: "8px", background: COLORS.bgLight }}>
+                                    <div style={{ height: "100%", width: `${pct}%`, background: COLORS.accent }}></div>
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
         </div>
     )
 }
