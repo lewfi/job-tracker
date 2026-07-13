@@ -1,158 +1,212 @@
-# job-tracker
+# Job Tracker
 
-6/25/2026:
+A full-stack job application tracker I built to have a real, end-to-end project to talk about in SWE interviews — FastAPI + Postgres backend with actual schema design decisions behind it, a React frontend, JWT auth, and a small analytics layer that isn't just a CRUD wrapper. This README is written for one reader: me, three months from now, trying to remember why I made every choice below before I walk into an interview and someone asks "tell me about a project you built."
 
-1: Tables and their relationship
-- 2 tables: applications and status_history
-- Linked by applicaton_id column in status_history, which stores id of application in each history row that it belongs to
-- Column type is a foreign key as it references primary key of another table
-- One-to-many relationship as one application can have many status history rows
+## What This Project Is
 
-2: Denormalization
-- status in both tables, pattern is called Denormalization, which is intentionally storing same piece of data (status) in two places for convenience
-- Do this over making status_history single source of truth because most common query ("Show me all applications currently at status ___"), becomes a simple one-table lookup on applications
-- Without denormalized status column, every similar query would need to find most recent row in status_history per application (more complex and slower)
-- Cost is that both places must stay in sync with every status update needing to touch both tables
+A job application tracker that lets a user log applications (company, role, status, source, dates, salary range, notes), move them through a pipeline (applied → screen → onsite → offer/rejected/withdrawn), and see analytics over that pipeline — status breakdown, funnel conversion, weekly application volume, and average time spent in each stage. I built it while job hunting for SWE roles (FinTech focus, applying out of UC Santa Cruz) specifically so I'd have a project with real architectural decisions in it — not another to-do list — and so I could dogfood it on my own job search while I built it.
 
-3: CHECK constraint vs Postgres ENUM
-- A CHECK constraint tells the database to reject any row where acolumn's value isn't in a specified list
-- Choose this over native Postgres ENUM because changing the allowed values later is simpler (just drop old constraint and add new one in standard migration)
-- Native Postgres ENUMs can sometimes cause new value additions to not run in same transaction as other schema changes, which could make migrations complex
-- CHECK constraint gives same enforcements but with less friction
+## Live Demo
 
-4: Append-only event log
-- status_history only gets rows added to it because each row represents a timestamped event that occurred.
-- Never editing the history and only appending is called an append-only event log.
-- This allows us to calculate: "How long did this application spend in the screen stage" by finding the gap betbween consecutive changed_at timestamps for the same application_id
+- **Frontend:** https://job-tracker-6qjb.vercel.app
+- **API:** https://job-tracker-production-23d0.up.railway.app
+- **Interactive API docs (Swagger UI):** https://job-tracker-production-23d0.up.railway.app/docs
 
-5: Three libraries
-- FastAPI: handles HTTP; receive requests, routes them to the right function, and sends responses back to the client; auto-generates Swagger/ReDoc documentation
-- SQLAlchemy: ORM (Object-Relational Mapper); translates between Python objects and SQL database rows; lets you work with database records as Python class instances instead of writing raw SQL
-- Pydantic: validates data crossing the API boundary by checking that incoming requests have right fields and types; shapes outgoing responses; All validation is delegated to Pydantic automatically
+## Architecture Overview
 
-6: models/ VS schemas/: 
-- models/ contains SQLAlchemy classes (Python representation of database tables) while schemas/ contains Pydantic classes (shapes of data flowing through the API)
-- Keep the folders seperate because the database shape and API shape aren't identical
-- Ex. id, created_at, and updated_at exist in Application SQLAlchemy Model but don't exist in ApplicationCreate because client doesn't provide those fields, just the server; But ApplicationRead includes them because by the time you're reading a row back, the server has assigned those values so the client should see them
+```
+┌──────────┐   HTTPS + JWT bearer   ┌──────────────┐   psycopg2 (SQLAlchemy)   ┌────────────┐
+│  Vercel   │ ─────────────────────> │   Railway    │ ─────────────────────────> │    Neon    │
+│  (React)  │ <──────── JSON ─────── │  (FastAPI)   │ <─────────── rows ──────── │ (Postgres) │
+└──────────┘                        └──────────────┘                           └────────────┘
+```
 
-7: Docker Compose
-- Docker Compose lets you define and run multiple containers together as one application using a single docker-compose.yml file
-- In this project, run 2 services: db (Postgres database using postgres:16 image) and api (our FastAPI app built by Dockerfile)
-- Docker Compose handles the networking between them, injects env vars, maps ports (so my Mac can reach the containers), and persists Postgres data between restarts via a named volume (postgres_data)
+Axios (`src/api.js`) attaches the JWT to every outgoing request via a request interceptor, and Postgres is only ever reached through Railway's API layer — the frontend never talks to the database directly.
 
-8: Environment variables
-- Hardcoding credentials in code is dangerous, if pushed to GitHub, they become public forever even when deleted
-- Env variables keep secrets outside code entirely
-- core/config.py reads them on Python side using Pydantic Settings (BaseSettings), which automatically reads from the environment or .env file
-- Priority order: actual env variables (used inside Docker via docker-compose.yml) -> .env file (local development) -> hardcoded defaults
+**Local dev stack** (`docker-compose.yml`), separate from the deployed one above:
 
-9: Alembic
-- Alembic is a database migration tool, so it tracks schema changes over time like how git does for code
-- Generating a migration compares SQLAlchemy models against the current database state and writes a Python script describing what changed
-- Applying it executes that script against the actual database
-- The 2 steps are separated so you can review and edit the generated script before it touches your data
+```
+docker compose up
+├── db   → postgres:16, port 5432, named volume `postgres_data` (data survives container restarts)
+└── api  → built from Dockerfile (python:3.11-slim), port 8000, `uvicorn --reload`
+            volume-mounted to the project dir (`.:/app`) so code edits on my Mac
+            appear inside the container immediately — no rebuild needed for a Python change
+```
 
-10: flush vs commit:
-- db.flush() sends pending SQL statements to Postgres within current transaction, database processes them, and assigns server-generated values like id, but DOESN'T finalize anything yet.
-- db.commit() finalizes the entire transaction and makes all changes permanent
-- Need to use flush() specifically in POST /applications because we had to create a StatusHistory row with application_id set to the new application's id, but it didn't exist until Postgres processes the INSERT; so flush() triggers that INSERTZ and makes id available while keeping both inserts inside one transaction so they succeed or fail together
+The frontend isn't in Compose — I run it separately with `npm run dev` (Vite, port 5173) since hot-reload works better outside Docker for React.
 
-11: Dependency injection vs get_db
-- Dependency injection means FastAPI automatically calls a function and passes its result to your route handler; you declare it as a parameter with Depends(get_db) and FastAPI handles the rest
-- get_db creates a SessionLocal() database session, yield will yield it to the route handler, then close it in a finally block after the request finishes regardless of request succession or failure
-- It's a generator function using yield specifically because try/finally pattern guarentees the session is always closed, preventing connection leaks that would eventually exhaust your database connection pool
+## Key Engineering Decisions & Why
 
-12: response_model
-- response_model=ApplicationRead does 3 things:
-    (1) filters the response to only include fields defined in ApplicationRead, so even if SQLAlchemy object has extra attributes, they won't leak into response
-    (2) validates the outgoing data against that schema
-    (3) tells FastAPI's doc generator the exact shape of a successful response, which appears in Swagger/ReDoc automatically
+### 1. Denormalized `status` column (`applications.status` + `status_history`)
+`status` is stored on `applications` **and** re-derived from the latest row in `status_history` — the same fact in two places. That's denormalization, and I did it on purpose. The single most common query in this app is "show me all applications currently at status X," and with a denormalized column that's a one-table filter. Without it, that query becomes "for every application, find its most recent `status_history` row, then filter" — a much more expensive query I'd be running on every page load. The tradeoff is I now have two places that can disagree, so every status change has to write both rows in the same transaction, or the two tables drift out of sync. I accepted that cost because reads (viewing your pipeline) happen far more often than writes (changing one application's status).
 
-13: db as hostname
-- Inside Docker Compose, each service is reachable by its service name on Docker's internal network
-- db is the service name of Postgres container so api container can reach it at db:5432
-- localhost insde the api container refers to the api containers itself, not db container
-- Since they're separate containers, localhost would find nothing, but Docker's internal DNS automatically resolves db to the Postgres container's IP address
+### 2. `CHECK` constraints over native Postgres `ENUM`
+Both `status` and `source` are `String` columns with a `CHECK (status IN (...))` constraint, not a Postgres `ENUM` type. I chose this specifically for migration friction: adding a value to a native `ENUM` type in Postgres historically couldn't run inside the same transaction as other schema changes (older Postgres versions flat-out disallowed it, and even now it's a special case Alembic handles differently from a normal column change). A `CHECK` constraint is just "drop the old constraint, add a new one" — a completely standard Alembic migration, no special-casing. I get the same enforcement (the database rejects `status = 'foo'`) with none of the ceremony.
 
-14: Missing module error
-- pydantic_settings wasn't in requirements.txt, so when Docker built the image and ran pip install -r requirements.txt, it was never installed inside the container
-- The fix was adding pydantic-settings==2.14.2 to requirements.txt and rebuilding with docker compose build --no-cache; the --no-cache flag was necessary because Docker had cached the old pip install layer and wouldn't rerun it without being forced to
+### 3. `status_history` as an append-only event log
+Rows in `status_history` are never updated or deleted — only inserted. That's what makes it an event log instead of just a second copy of the current state. Every insert is a timestamped fact: "this application was `screen` starting at this instant." That's the only way to answer "how long did this application spend in screen?" — you find two consecutive rows for the same `application_id`, take the gap between their `changed_at` timestamps, and that's the answer. If I overwrote status instead of appending, that history would be gone the moment the status changed.
 
-15: Migration file not appearing locally
-- Docker copies your code into the container at build time via COPY .. in the Dockerfile like a one-time snapshot
-- Files created inside the container afterward don't sync back to my Mac
-- The fix was adding - .:/app as a volume mount in docker-compose.yml, which creates a live two-way sync between local project directory and /app inside the container, so migration files generated inside the container appear on my local Mac instantly
+### 4. Pydantic schemas separate from SQLAlchemy models
+`models/` holds SQLAlchemy classes — the database's shape. `schemas/` holds Pydantic classes — the API's shape. They're deliberately not the same shape. `ApplicationCreate` has no `id`, `created_at`, or `updated_at` fields because the client doesn't get to set those — the server assigns them. `ApplicationRead` *does* include them, because by the time you're reading a row back, the server has already filled them in and the client should see them. If I used the SQLAlchemy model directly as the request body, a client could POST `{"id": 1, "created_at": "2020-01-01", ...}` and I'd have to remember to strip those fields by hand on every route. Pydantic makes "what the client is allowed to send" and "what the client gets back" two explicit, separately-typed contracts instead of one model doing double duty.
 
-16: Hostname error with local alembic
-- Running alembic from your Mac terminal means it runs directly on your Mac, outside Docker's network entirely
-- Tries to connect to a host named db but that hostname exists only inside Docker's internal network
-- The fix was running it via docker compose exec api alembic ... executes the commands inside the running api container on Docker's network so their internal DNS resolves db to the Postgres container successfully
+### 5. `db.flush()` before `db.commit()` in `POST /applications`
+Creating an application also creates its first `status_history` row, and that row needs the new application's `id` as a foreign key — but Postgres doesn't assign that `id` until the `INSERT` actually runs. `db.commit()` would finalize the whole transaction, which is more than I want yet. `db.flush()` sends the pending `INSERT` to Postgres and gets the generated `id` back, *without* closing the transaction — so I can use `db_application.id` to build the `status_history` row, `add()` it, and only then `commit()` once, atomically. Both rows land together or neither does.
 
-6/26/2026:
+### 6. `get_db` as a generator with `yield` inside `try`/`finally`
+```python
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+```
+FastAPI's dependency injection calls this, hands the yielded session to my route handler, and — because it's a generator — resumes execution *after* the `yield` once the request is done, running the `finally` block no matter what happened in between. That `finally` is the part that matters: if the route handler raises an exception, the session still gets closed. Without that guarantee, a failing request would leak a database connection every time, and I'd eventually exhaust Postgres's connection pool under any real load.
 
-1: CRUD + HTTP Methods
-- CRUD stands for Create, Read, Update, Delete
-- Create => POST, Read => GET, Update => PATCH or PUT, Delete => DELETE
+### 7. SQLite for tests, via `app.dependency_overrides`
+Tests never touch the real Postgres database. `conftest.py` swaps `get_db` for a version that yields a SQLite session instead, using FastAPI's `app.dependency_overrides` — every route handler still just says `Depends(get_db)` and has no idea it's talking to SQLite instead of Postgres. I chose SQLite specifically so the test suite doesn't need Docker running: it creates a fresh database in milliseconds per test function (`scope="function"`, so every test starts from a completely empty schema — no state leaking between tests) and tears it down just as fast. The tradeoff is real: SQLite and Postgres don't enforce every constraint identically, so this suite proves my CRUD logic and validation are correct, but it can't catch a Postgres-only behavior difference. For this project's scope, that tradeoff is worth the speed.
 
-2: Path parameter
-- Path parameter is the variable you find in the URL, like the application_id within the URL
-- FastAPI extracts path parameters automatically by matching the parameter name in the URL pattern to a function argument with the same name and a type hint
-- Ex: @router.get("/{application_id}") paired with def get_application(application_id: int, ...) tells FastAPI to extract what's in that URL position, convert it to an int, and pass it in; if conversion fails (ex. /applications/apple), FastAPI returns a 422 automatically
+### 8. App-level validation *and* DB-level `CHECK` constraints — defense in depth
+Pydantic already rejects a request with a garbage `status` value... except it doesn't, because `status: str` in my schemas is just typed as a string, not a literal/enum — Pydantic will happily accept `"banana"`. The `CHECK` constraint at the database is what actually rejects it, by raising `IntegrityError`. I catch that in the route handler and turn it into a clean `422`. So the real validation is the database constraint; the `try/except IntegrityError` is what keeps that database-level rejection from surfacing as an ugly 500. Two layers, and each one is covering a gap the other layer has.
 
-3: Fetching single application by ID
-- If you fetch for a single application and it doesn't exist, then a 404 Not Found exception is raised via FastAPI's HTTPException
-- HTTPException is imported from fastapi, raises status_code=404 and a detail message; FastAPI catches it and converts it to a proper JSON error response automatically so you don't have to build response yourself
+### 9. `LEAD()` window function for time-in-stage — and why it needs a subquery
+For every `status_history` row, I want to know "how long until the *next* status change for this same application?" That's exactly what `LEAD(changed_at) OVER (PARTITION BY application_id ORDER BY changed_at)` computes — it looks one row ahead within each application's own timeline and hands back that next timestamp on the *current* row, so I can subtract. The subquery is required, not optional: a window function computes a value per row *within* its partition, and you cannot wrap an aggregate like `AVG()` directly around a window function in the same `SELECT` — they operate at different stages of query execution. So I compute `time_spent` per row in an inner query (materialized as a subquery), then `GROUP BY status` and `AVG(time_spent)` in an outer query over that subquery's output. One more gotcha this surfaced: the *current* status of an application has no "next" row, so `LEAD()` returns `NULL` for it — dividing that by `86400` to convert seconds to days threw an unhandled error before I added an explicit `is not None` check to skip those rows.
 
-4: exclude_unset=TRUE
-- exclude_unset=TRUE within the PATCH endpoint will allow for any unset values for fields to not change the data and this is important for partial updates because it lets you update data without having to either re-enter all the original fields or change all fields
-- Without exclude_unset=TRUE, calling .model_dump() would include all fields with their default values (None for optional fields), which would overwrite all the non-updated fields to None; this destroys all existing data
+### 10. JWT auth with bcrypt password hashing
+Passwords are hashed with bcrypt (via `passlib`'s `CryptContext`) before they ever touch the database — I never store or log a plaintext password. On login, I don't decrypt anything (bcrypt hashes aren't reversible); I hash the submitted password the same way and compare hashes. On success, I issue a JWT: a signed, base64-encoded blob containing `sub` (the user's id) and `exp` (an expiry timestamp, 7 days out), signed with `SECRET_KEY` using HMAC-SHA256. The frontend stores that token in `localStorage` and attaches it as `Authorization: Bearer <token>` on every request via an Axios interceptor. The backend never stores the token anywhere — that's what "stateless" means here: any request carrying a validly-signed, unexpired token is trusted, with no database lookup or server-side session table required to check it. `SECRET_KEY` is the only thing that makes a token trustworthy; anyone who has it can forge a valid token for any user id, which is why it's a required environment variable with no default in code — the app refuses to start without one.
 
-5: setattr()
-- Because we are looping over a dictionary of field names and values, can't use dot notation when field name is a variable
-- setattr() equivalent to application.{key} = value; works when key is a string var
-- Without setattr(), would need a big if/else block for every possible field name
+### 11. Docker Compose service networking — why `db` works as a hostname
+Inside `docker-compose.yml`, the Postgres container is named `db`. From inside the `api` container, `db:5432` resolves — Docker Compose creates an internal DNS network where each service is reachable by its service name. `localhost` inside the `api` container refers to the `api` container itself, which has no Postgres running on it, so that connection would just fail. This only works between containers on the same Compose network; running `alembic` directly from my Mac's terminal (outside Docker) can't resolve `db` at all, since that hostname doesn't exist outside Docker's internal network — I have to run migrations via `docker compose exec api alembic upgrade head` so they execute *inside* the container, on the network where `db` means something.
 
-6: Updating a status
-- Updating a status requires writing to two tables because we do something called denormalization where we keep the same field in different tables
-- Ensuring atomicity is SQLAlchemy session transaction with setattr() and db.add(db_status_history) happening before db_commit(), so either both land or fail
+### 12. Alembic migrations — not `Base.metadata.create_all()`
+`create_all()` would get me a working schema on day one, but it can't express "add a column to a table that already has data" or "rename this constraint" — it only knows how to create tables that don't exist yet. Alembic tracks schema changes as an ordered sequence of versioned Python scripts, the same way git tracks code changes as commits. "Generate" and "apply" are two separate steps on purpose: generating a migration diffs my SQLAlchemy models against the database's current state and writes a script describing the difference, but it doesn't touch the database yet — I get to read that script and edit it before "apply" (`alembic upgrade head`) actually runs it. That mattered for real: the migration that added `applications.user_id` for auth had to delete pre-existing rows that had no owner before making the column `NOT NULL`, which is exactly the kind of destructive step I wanted to write and review by hand, not have silently autogenerated.
 
-7: HTTP status code for successful DELETE
-- 204 No Content is the status code for a successful delete and we return no body to show that it was deleted, because there's nothing meaningful there now
+## Data Model
 
-8: Difference between db.get(Model, id) and db.execute(select(Model).where(...))
-- You would use db.execute(...) for arbitrary queries where you have a specific condition and not a primary key 
-- You use db.get() fetches by primary key specifically and best when you want access to one data entry
+**`applications`**
 
-9: Cascade delete
-- Cascade delete is when you want to delete an entry that's relied upon by child entries
-- We need this because status_history rows rely on the application id, so cascade tells SQLAlchemy to delete all the child rows first in status_history, then delete the parent
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | Integer | PK, indexed |
+| `user_id` | Integer | FK → `users.id`, `ON DELETE CASCADE`, `NOT NULL`, indexed |
+| `company` | String(255) | `NOT NULL` |
+| `role` | String(255) | `NOT NULL` |
+| `status` | String(50) | `NOT NULL`, `CHECK IN (applied, screen, onsite, offer, rejected, withdrawn)` |
+| `date_applied` | Date | `NOT NULL` |
+| `source` | String(50) | `NOT NULL`, `CHECK IN (linkedin, indeed, company_website, referral, handshake, other)` |
+| `location` | String(255) | nullable |
+| `salary_min` / `salary_max` | Integer | nullable |
+| `salary_text` | String(255) | nullable |
+| `notes` | String(1000) | nullable |
+| `created_at` / `updated_at` | DateTime | `NOT NULL`, server-side defaults |
 
-10: --reload in Docker cmd
-- --reload makes uvicorn watch your code files for changes and automatically restart the server when it detects a save
-- Works because the volume mount (-.:/app) syncs local files into the container in real time, so when save happens on my Mac, uvicorn sees change inside container and reloads
+**`status_history`**
 
-11: CheckViolation error
-- CheckViolation error means that a CheckConstraint error is occurring where the input doesn't match the CheckConstraint list
-- This was caused by the source: "string" because "string" isn't a source within our CheckConstraint list.
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | Integer | PK, indexed |
+| `application_id` | Integer | FK → `applications.id`, `NOT NULL` |
+| `status` | String(50) | `NOT NULL`, same `CHECK` constraint as above |
+| `changed_at` | DateTime | `NOT NULL`, defaults to insert time |
 
-Final sprint:
-1. Test isolation
-Test isolation is when you isolate the testing environment away from production — specifically the production database. This prevents test data (fake companies, roles, etc.) from polluting real data, and ensures tests start from a predictable clean state rather than being affected by leftover data from previous runs.
+One `applications` row → many `status_history` rows. Worth knowing cold: this cascade is enforced two different ways at two different levels. `applications.user_id` has `ON DELETE CASCADE` *at the database level* — deleting a user deletes their applications even via raw SQL. `status_history.application_id` has **no** `ON DELETE CASCADE` in the schema; deleting an application's history rows is handled entirely by SQLAlchemy's `cascade="all, delete-orphan"` on the ORM relationship, which only fires when you delete through the ORM (`db.delete(application)`). A raw `DELETE FROM applications` outside the ORM would leave orphaned `status_history` rows behind. I know this asymmetry exists; if I were hardening this further I'd add the DB-level cascade there too instead of relying on "always delete through the ORM."
 
-2. pytest fixture and scope="function"
-A pytest fixture sets up something a test needs and tears it down after the test finishes. scope="function" means the fixture runs once per test function — each test gets a completely fresh database created and destroyed just for it. If it were scope="session", all tests would share one database and leftover data from one test could affect the next, breaking isolation.
+**`users`** (added for auth): `id` (PK), `email` (String(255), unique, indexed, `NOT NULL`), `hashed_password` (String(255), `NOT NULL`), `created_at` (DateTime, `NOT NULL`).
 
-3. app.dependency_overrides
-app.dependency_overrides lets you swap out any FastAPI dependency for a different one during tests. We use it to replace get_db (which normally connects to the real Postgres database) with a function that returns a SQLite test database session instead. Every route handler that calls Depends(get_db) automatically gets the test database without knowing or caring — the handler code doesn't change at all.
+## API Endpoints
 
-4. SQLite for tests
-SQLite is used because it runs entirely in memory — no server needed, no Docker container required. Using Postgres for tests would mean spinning up a Docker container every time you run the test suite, which is slow and adds complexity. SQLite creates and destroys in milliseconds, making the test suite fast and self-contained. The tradeoff is that SQLite and Postgres have slight differences (like how they handle some constraints), but for testing basic CRUD behavior it's perfectly adequate.
+| Method | Path | Description | Auth |
+|---|---|---|---|
+| GET | `/` | Health check | No |
+| POST | `/auth/register` | Create a user, returns a JWT | No |
+| POST | `/auth/login` | Verify credentials, returns a JWT | No |
+| POST | `/applications/` | Create an application (+ initial `status_history` row) | Yes |
+| GET | `/applications/` | List the current user's applications | Yes |
+| GET | `/applications/{id}` | Get one application (404 if it's not yours) | Yes |
+| PATCH | `/applications/{id}` | Partial update; writes a new `status_history` row if `status` changed | Yes |
+| DELETE | `/applications/{id}` | Delete an application and its history | Yes |
+| GET | `/analytics/pipeline` | Count of applications per current status | Yes |
+| GET | `/analytics/funnel` | Count + conversion rate per stage | Yes |
+| GET | `/analytics/weekly` | Applications submitted, grouped by week | Yes |
+| GET | `/analytics/time-in-stage` | Average days spent per stage before moving on | Yes |
 
-5. conftest.py
-conftest.py is a special pytest file that defines shared fixtures, test engine setup, and the test client. Pytest auto-discovers it without needing an import — any fixture defined inside it is automatically available to every test file in the same directory and subdirectories. It's not a test file itself, it's shared configuration that runs before any tests start.
+"Auth required" means the request needs `Authorization: Bearer <token>`, validated by `get_current_user`. Every one of these queries is additionally filtered to `user_id == current_user.id` — there's no endpoint anywhere that can return another user's data.
 
-6. IntegrityError
-An IntegrityError is raised when data violates a database constraint — in this project, when status or source values don't match the CHECK constraint list. Without the handler, an invalid value would cause an unhandled exception that crashed the entire request, returning a confusing raw 500 error with a SQLAlchemy traceback to the client. With the handler, the database rolls back cleanly and the client gets a meaningful 422 response explaining what went wrong. This is the difference between a robust API and a fragile one.
+## Analytics Layer
 
-7. Pattern for testing endpoints requiring an existing resource
-Always create the resource you need within the test itself via a POST request, extract the id from the response, then use that id in the subsequent request. Never assume a specific id exists in the database — since each test runs against a fresh database, you must create everything the test depends on from scratch inside that test.
+- **`/pipeline`** — a single `GROUP BY status` with `COUNT(*)`. The simplest of the four; this is "how many applications are currently in each stage."
+- **`/funnel`** — starts as the same `GROUP BY`, but conversion rate (`count / total`) isn't something I compute in SQL here — I pull the grouped counts back and do the division in Python, because I also need to backfill stages with zero applications (the `GROUP BY` only returns rows for statuses that actually exist in the data, and a funnel with a missing stage looks like a bug).
+- **`/weekly`** — `date_trunc('week', date_applied)` collapses every date into the Monday that starts its week, then a normal `GROUP BY` on that truncated value counts applications per week.
+- **`/time-in-stage`** — the most involved one: a `LEAD()` window function computes, per `status_history` row, the timestamp of that application's *next* status change, wrapped in a subquery so an outer query can `GROUP BY status` and `AVG()` the resulting per-row durations. See decision #9 above for why the subquery specifically is structurally required, not a style choice.
+
+## Auth Flow
+
+**Register** (`POST /auth/register`): client sends `{email, password}` → backend checks the email isn't already taken (409 if it is) → hashes the password with bcrypt → creates the `User` row → issues a JWT (`sub` = the new user's id, `exp` = 7 days out, signed with `SECRET_KEY`) → returns `{access_token, token_type: "bearer", email}`.
+
+**Login** (`POST /auth/login`): looks up the user by email, verifies the submitted password against the stored bcrypt hash. On failure — wrong password *or* email that doesn't exist — it returns the exact same `401 "Invalid email or password"` either way, so a failed login never reveals whether the email itself is registered.
+
+**Frontend**: `App.jsx` stores `access_token` and the user's email in `localStorage` after either flow succeeds. `src/api.js` has a request interceptor that reads the token from `localStorage` on *every* outgoing Axios call and attaches `Authorization: Bearer <token>` — individual components never think about auth headers at all. A response interceptor watches for `401`s; if one comes back from anywhere other than `/auth/*` itself (so a failed login attempt doesn't wipe a still-valid session), it clears `localStorage` and reloads, which drops the user back to the login screen since `App.jsx` decides what to render based on whether a token exists.
+
+**Backend**: any protected route declares `current_user: User = Depends(get_current_user)`. That dependency pulls the token off the `Authorization` header (via `OAuth2PasswordBearer` — which here is only used for that header extraction; `/auth/login` still takes a plain JSON body, not OAuth2 form data), decodes and verifies the JWT's signature and expiry with `jose.jwt.decode`, reads `sub` back out as the user id, and does a real `db.get(User, user_id)` lookup — so a token for a since-deleted user correctly fails instead of trusting a stale claim. Any failure along that chain — expired, tampered, malformed, or a user that no longer exists — returns a `401`.
+
+## Testing
+
+26 tests total: 18 in `test_applications.py` (CRUD, field validation, `CHECK`-constraint violations, partial updates, cascade delete, edge cases like double-deleting or patching a nonexistent id) and 8 in `test_auth.py` (register, duplicate email, login success/failure, missing/garbage tokens, and cross-user isolation — proving user B genuinely cannot see or modify user A's data, not just that the endpoint returns *something*).
+
+`conftest.py` builds a fresh SQLite database per test function via `Base.metadata.create_all()`/`drop_all()`, `scope="function"` so no test can leak state into the next one, and swaps `get_db` out via `app.dependency_overrides` (see decision #7). The `client` fixture pre-registers one fixed test user and attaches its token as a default header — which is why none of the 18 CRUD tests needed to change at all when auth was added later; they were all already implicitly "logged in" as that one user. A separate `unauthenticated_client` fixture exists for the auth-specific tests that need a blank slate with no token.
+
+The `IntegrityError` handling in `POST /applications` exists *because* testing surfaced its absence: posting an invalid `status` or `source` value violated the `CHECK` constraint, and without a handler that came back as a raw, unhandled 500 with a SQLAlchemy traceback leaking to the client. Wrapping the insert in `try/except IntegrityError` → `db.rollback()` → `HTTPException(422, ...)` turned an application crash into a clean, expected validation error — a good example of a test not just confirming correct behavior, but actually finding a real gap.
+
+## What I'd Do Differently
+
+- **`frontend/.env.development` and `.env.production` define `VITE_API_URL`, but `api.js` never reads it** — it hardcodes the Railway URL directly. Those env files exist and do nothing; switching environments currently means editing source instead of setting a variable. Small, but it's the kind of thing that looks careless in code review.
+- **No refresh tokens.** Every access token is valid for a flat 7 days with no way to revoke one early — there's no server-side session to invalidate on logout, no rotation, nothing. If a token leaked, it's live until it expires no matter what I do. A short-lived access token plus a refresh token (or at minimum a server-side revocation list) would close that gap.
+- **No rate limiting on `/auth/login` or `/auth/register`.** Nothing currently stops repeated password guesses against a known email address.
+- **The `status` / `status_history` sync is entirely an application-code discipline, not a database guarantee.** Every place that changes `status` has to remember to also insert a `status_history` row in the same transaction — I got this right in the one route that does it, but nothing in the schema would stop a future route (or a raw SQL fix in prod) from updating `status` alone and quietly breaking the history. A trigger would make that a guarantee instead of a convention.
+- **Zero frontend tests.** The backend has 26 pytest tests; the React side has none. The UI redesign was verified with a one-off Playwright script I wrote and ran by hand, not something that runs in CI or catches a regression six weeks from now.
+
+## Debugging War Stories
+
+**Docker on Apple Silicon needed Rosetta emulation.** Early on, `docker compose up` on my M-series Mac choked trying to run the Postgres/Python images built for `linux/amd64` — Docker Desktop has to emulate x86 via Rosetta for images without a native `arm64` build, and that emulation path wasn't working out of the box. The fix was making sure Docker Desktop's "Use Rosetta for x86/amd64 emulation" setting was actually enabled, not something I'd have thought to check if the containers had just silently worked.
+
+**`pydantic_settings` wasn't in `requirements.txt`.** The app imported it fine locally (already installed in my venv from another project) but crashed inside Docker with `ModuleNotFoundError` the moment I containerized it, because the container only has what `pip install -r requirements.txt` actually installs. Adding `pydantic-settings==2.14.2` to the file fixed it — but the first rebuild *still* failed, because Docker had cached the `pip install` layer from before the fix and wouldn't rerun it. `docker compose build --no-cache` forced it to actually reinstall.
+
+**Alembic migration files weren't showing up on my Mac.** I generated a migration inside the running `api` container, and the file just... wasn't in my local `alembic/versions/` folder. `COPY . .` in the Dockerfile copies code into the image once, at build time — it's a snapshot, not a sync. Anything created inside the container afterward stays inside the container. Adding `- .:/app` as a volume mount in `docker-compose.yml` made it a live two-way sync instead, so a file created inside the container appears on my Mac (and vice versa) immediately.
+
+**Railway had `DATEBASE_URL` instead of `DATABASE_URL`.** Deployed API returned 500s on every DB-touching route with no useful error visible from the Railway logs alone. I temporarily added a `/debug-env` endpoint that echoed back whether `DATABASE_URL` was set and its prefix, hit it, and immediately saw it was unset — because I'd fat-fingered the env var name in Railway's dashboard. Fixed the typo, deleted the debug endpoint the same day (it's the kind of thing you do not want to accidentally leave in prod).
+
+**CORS silently broke across a redirect.** The frontend called `/applications` (no trailing slash); the route is actually defined at `/applications/`. FastAPI's default behavior is to 307-redirect the first to the second — and that redirect response doesn't carry the same CORS headers as a normal response, so the browser blocked it as a CORS failure with an error message that had nothing to do with the real cause. My first instinct was to set `redirect_slashes=False` on the app to kill the redirect entirely — that "worked," but it was a band-aid on top of not understanding the real problem. I reverted it and fixed the actual source: changed the frontend's Axios calls to hit `/applications/` directly, matching how the route is actually defined, so no redirect happens at all.
+
+**`passlib` and `bcrypt>=4.1` don't get along.** Installing `passlib[bcrypt]` fresh pulled in the latest `bcrypt`, and hashing a password immediately threw `AttributeError: module 'bcrypt' has no attribute '__about__'` — followed by a second, stranger error (`password cannot be longer than 72 bytes`) once passlib fell back to a broken compatibility path. `bcrypt` 4.1 removed the `__about__` submodule that `passlib`'s version-detection code depends on, and passlib hasn't caught up. Pinning `bcrypt==4.0.1` (the last version that still has `__about__`) fixed both errors in one shot. I found this by writing a two-line smoke test (`hash_password`/`verify_password` in isolation) *before* wiring auth into any route — worth doing that in general before building on top of a new dependency.
+
+## Running Locally
+
+```bash
+git clone <repo-url>
+cd job-tracker
+
+# Backend env
+cp .env.example .env
+# fill in DATABASE_URL (a local Postgres is fine — see docker-compose.yml for the local one)
+# generate a SECRET_KEY:
+python -c "import secrets; print(secrets.token_hex(32))"
+# paste it into .env as SECRET_KEY=...
+
+# Start Postgres + API
+docker compose up -d
+
+# Run migrations *inside* the container (see decision #11 — `db` only resolves on Docker's network)
+docker compose exec api alembic upgrade head
+
+# Frontend
+cd frontend
+npm install
+npm run dev   # http://localhost:5173, talks to the API on http://localhost:8000
+```
+
+To run the backend test suite (doesn't need Docker — it's all SQLite, see decision #7):
+
+```bash
+pip install -r requirements.txt
+pytest
+```
