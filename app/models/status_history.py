@@ -15,7 +15,7 @@ class StatusHistory(Base):
     __tablename__ = "status_history"
 
     __table_args__ = (
-        CheckConstraint("status IN ('applied', 'screen', 'onsite', 'offer', 'rejected', 'withdrawn')", name="status_check"),
+        CheckConstraint("status IN ('applied', 'oa', 'screen', 'onsite', 'offer', 'rejected', 'withdrawn')", name="status_check"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)

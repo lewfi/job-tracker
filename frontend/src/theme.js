@@ -11,7 +11,7 @@ export const COLORS = {
 
 export const MONO = "'IBM Plex Mono', monospace"
 
-export const STATUSES = ["applied", "screen", "onsite", "offer", "rejected", "withdrawn"]
+export const STATUSES = ["applied", "oa", "screen", "onsite", "offer", "rejected", "withdrawn"]
 export const SOURCES = ["linkedin", "indeed", "company_website", "referral", "handshake", "other"]
 
 export const SOURCE_LABELS = {
@@ -25,6 +25,7 @@ export const SOURCE_LABELS = {
 
 export const STATUS_LABELS = {
     applied: "Applied",
+    oa: "OA",
     screen: "Screen",
     onsite: "Onsite",
     offer: "Offer",
@@ -34,6 +35,7 @@ export const STATUS_LABELS = {
 
 export const STATUS_META = {
     applied: { bg: COLORS.bgLight, color: "#4B5563" },
+    oa: { bg: COLORS.pillBlueBg, color: COLORS.accent },
     screen: { bg: COLORS.pillBlueBg, color: COLORS.accent },
     onsite: { bg: COLORS.pillBlueBg, color: COLORS.accent },
     offer: { bg: COLORS.accent, color: "#FFFFFF" },

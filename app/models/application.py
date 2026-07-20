@@ -16,7 +16,7 @@ class Application(Base):
 
     __table_args__ = (
         CheckConstraint("source IN ('linkedin', 'indeed', 'company_website', 'referral', 'handshake', 'other')", name="source_check"),
-        CheckConstraint("status IN ('applied', 'screen', 'onsite', 'offer', 'rejected', 'withdrawn')", name="status_check"),
+        CheckConstraint("status IN ('applied', 'oa', 'screen', 'onsite', 'offer', 'rejected', 'withdrawn')", name="status_check"),
     )
 
     # Core fields

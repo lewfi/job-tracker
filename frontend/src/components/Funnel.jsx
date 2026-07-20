@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import api from "../api"
 import { COLORS, MONO } from "../theme"
 
-const FUNNEL_STAGES = ["applied", "screen", "onsite", "offer"]
+const FUNNEL_STAGES = ["applied", "oa", "screen", "onsite", "offer"]
 
 function Funnel({ refreshKey }) {
     const [data, setData] = useState(null)
