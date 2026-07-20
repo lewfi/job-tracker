@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import api from "../api"
-import { COLORS, MONO, STATUSES, STATUS_LABELS } from "../theme"
+import { COLORS, MONO, STATUSES, STATUS_LABELS, STATUS_META } from "../theme"
 
 function Pipeline({ refreshKey }) {
     const [data, setData] = useState(null)
@@ -32,7 +32,7 @@ function Pipeline({ refreshKey }) {
                                 <span>{count}</span>
                             </div>
                             <div style={{ height: "8px", background: COLORS.bgLight }}>
-                                <div style={{ height: "100%", width: pct, background: COLORS.accent }}></div>
+                                <div style={{ height: "100%", width: pct, background: STATUS_META[status].swatch }}></div>
                             </div>
                         </div>
                     )

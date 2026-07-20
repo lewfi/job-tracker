@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import api from "../api"
-import { COLORS, MONO, STATUS_LABELS } from "../theme"
+import { COLORS, MONO, STATUS_LABELS, STATUS_META } from "../theme"
 
 function formatDays(avgDays) {
     const hours = avgDays * 24
@@ -44,7 +44,7 @@ function TimeInStage({ refreshKey }) {
                                     <span>{formatDays(row.avg_days)}</span>
                                 </div>
                                 <div style={{ height: "8px", background: COLORS.bgLight }}>
-                                    <div style={{ height: "100%", width: `${pct}%`, background: COLORS.accent }}></div>
+                                    <div style={{ height: "100%", width: `${pct}%`, background: STATUS_META[row.stage]?.swatch ?? COLORS.accent }}></div>
                                 </div>
                             </div>
                         )

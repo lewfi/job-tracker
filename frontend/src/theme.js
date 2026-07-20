@@ -4,7 +4,6 @@ export const COLORS = {
     muted: "#6B6B6B",
     mutedLight: "#9CA3AF",
     bgLight: "#F3F4F6",
-    pillBlueBg: "#E6EEFF",
     error: "#B91C1C",
     border: "#000000",
 }
@@ -33,12 +32,15 @@ export const STATUS_LABELS = {
     withdrawn: "Withdrawn",
 }
 
+// `swatch` is the representative hue for each status (used in charts/bars).
+// It matches `color` except for `offer`, whose badge uses a solid fill with
+// white text — there the swatch is the fill color itself.
 export const STATUS_META = {
-    applied: { bg: COLORS.bgLight, color: "#4B5563" },
-    oa: { bg: COLORS.pillBlueBg, color: COLORS.accent },
-    screen: { bg: COLORS.pillBlueBg, color: COLORS.accent },
-    onsite: { bg: COLORS.pillBlueBg, color: COLORS.accent },
-    offer: { bg: COLORS.accent, color: "#FFFFFF" },
-    rejected: { bg: COLORS.bgLight, color: COLORS.mutedLight },
-    withdrawn: { bg: COLORS.bgLight, color: COLORS.mutedLight },
+    applied: { bg: COLORS.bgLight, color: "#4B5563", swatch: "#4B5563" },
+    oa: { bg: "#FEF3C7", color: "#92400E", swatch: "#92400E" },
+    screen: { bg: "#E0E7FF", color: "#4338CA", swatch: "#4338CA" },
+    onsite: { bg: "#F3E8FF", color: "#7E22CE", swatch: "#7E22CE" },
+    offer: { bg: "#16A34A", color: "#FFFFFF", swatch: "#16A34A" },
+    rejected: { bg: "#FEE2E2", color: COLORS.error, swatch: COLORS.error },
+    withdrawn: { bg: "#F5F5F4", color: "#57534E", swatch: "#57534E" },
 }
