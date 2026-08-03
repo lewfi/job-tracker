@@ -31,7 +31,7 @@ def get_funnel(db: Session = Depends(get_db), current_user: User = Depends(get_c
     ).all()
 
     counts = {rows.status: rows.count for rows in result}
-    stages = ["applied", "oa", "screen", "onsite", "offer", "rejected", "withdrawn"]
+    stages = ["applied", "oa", "screen", "technical", "behavioral", "onsite", "offer", "rejected", "withdrawn"]
     total = sum(counts.values())
 
     funnel = []
