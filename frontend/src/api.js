@@ -5,7 +5,7 @@ const api = axios.create({
     // directly (cross-origin, port 8000). It's unset in production/preview,
     // so this falls back to "/api" — a same-origin request that vercel.json
     // rewrites to the Python function, avoiding a hardcoded domain.
-    baseURL: import.meta.env.VITE_API_URL || "/api"
+    baseURL: import.meta.env.VITE_API_URL || "https://job-tracker-ezbr.onrender.com"
 })
 
 api.interceptors.request.use((config) => {
