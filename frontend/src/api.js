@@ -1,7 +1,11 @@
 import axios from "axios"
 
 const api = axios.create({
-    baseURL: "https://job-tracker-production-23d0.up.railway.app"
+    // VITE_API_URL is set in .env.development to hit the local Docker API
+    // directly (cross-origin, port 8000). It's unset in production/preview,
+    // so this falls back to "/api" — a same-origin request that vercel.json
+    // rewrites to the Python function, avoiding a hardcoded domain.
+    baseURL: import.meta.env.VITE_API_URL || "/api"
 })
 
 api.interceptors.request.use((config) => {

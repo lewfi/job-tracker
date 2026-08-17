@@ -1,19 +1,50 @@
 ## Live Demo
 
-- **Frontend:** https://job-tracker-6qjb.vercel.app
-- **API:** https://job-tracker-production-23d0.up.railway.app
-- **Interactive API docs (Swagger UI):** https://job-tracker-production-23d0.up.railway.app/docs
+- **App (frontend + API):** https://job-tracker-6qjb.vercel.app
+- **Interactive API docs (Swagger UI):** https://job-tracker-6qjb.vercel.app/api/docs
 
 ## Architecture Overview
 
+Everything runs on Vercel now — the React frontend and the FastAPI backend deploy
+as a single project. There is no Railway anywhere in this stack anymore.
+
 ```
-┌──────────┐   HTTPS + JWT bearer   ┌──────────────┐   psycopg2 (SQLAlchemy)   ┌────────────┐
-│  Vercel   │ ─────────────────────> │   Railway    │ ─────────────────────────> │    Neon    │
-│  (React)  │ <──────── JSON ─────── │  (FastAPI)   │ <─────────── rows ──────── │ (Postgres) │
-└──────────┘                        └──────────────┘                           └────────────┘
+┌────────────────────────────────────┐   psycopg2 (SQLAlchemy)   ┌────────────┐
+│              Vercel                 │ ─────────────────────────> │    Neon    │
+│  ┌──────────┐        ┌───────────┐  │ <─────────── rows ──────── │ (Postgres) │
+│  │  React    │  /api  │  FastAPI  │  │                           └────────────┘
+│  │ (static)  │ ─────> │(api/index.│  │
+│  │           │ <──────│    py)    │  │
+│  └──────────┘  JSON   └───────────┘  │
+└────────────────────────────────────┘
 ```
 
-Axios (`src/api.js`) attaches the JWT to every outgoing request via a request interceptor, and Postgres is only ever reached through Railway's API layer — the frontend never talks to the database directly.
+`vercel.json` rewrites every `/api/*` request to the single Python function at
+`api/index.py`, which is a thin ASGI adapter that strips the `/api` prefix and
+hands the request to the existing FastAPI `app` from `app/main.py` unchanged.
+Every other path falls through to the built React app (`frontend/dist`). Axios
+(`src/api.js`) attaches the JWT to every outgoing request via a request
+interceptor; in production it talks to `/api` (same-origin), in local dev it
+talks directly to the Dockerized API on `localhost:8000`.
+
+**Important — cold starts and DB connections work differently than Railway:**
+
+- Railway ran one long-lived FastAPI process with a persistent connection pool.
+  Vercel spins up a new, short-lived function instance per request (with some
+  warm reuse), so `app/core/database.py` uses `NullPool` — every request opens
+  and closes its own Postgres connection against Neon's `-pooler` endpoint
+  instead of reusing a pool. This is required for serverless correctness (a
+  persistent pool across ephemeral instances would leak connections and
+  eventually exhaust Neon's connection limit), but it means every request pays
+  for a fresh TCP + TLS handshake to Neon, which is slower per-request than
+  Railway's pooled connections.
+- Cold starts: the first request to a Python function after a period of
+  inactivity (or a new deploy) pays a startup penalty — importing FastAPI,
+  SQLAlchemy, etc. — that a warm Railway process never had. Vercel's Hobby tier
+  doesn't offer a way to keep functions permanently warm, so an infrequently
+  used deployment will occasionally show a slower first request.
+- Alembic migrations **cannot** run inside a serverless function or at
+  app startup — see [Migrations](#migrations) below.
 
 **Local dev stack** (`docker-compose.yml`), separate from the deployed one above:
 
@@ -107,6 +138,13 @@ One `applications` row → many `status_history` rows. Worth knowing cold: this 
 
 ## API Endpoints
 
+Paths below are as FastAPI registers them (and as local dev, hitting the API
+directly on `localhost:8000`, uses them). In production, prefix each with
+`/api` — e.g. `POST /api/applications/` — since that's the same-origin path
+`vercel.json` rewrites to the Python function; `api/index.py` strips the
+`/api` prefix before FastAPI sees the request, so FastAPI itself is never
+aware of it.
+
 | Method | Path | Description | Auth |
 |---|---|---|---|
 | GET | `/` | Health check | No |
@@ -151,7 +189,6 @@ The `IntegrityError` handling in `POST /applications` exists *because* testing s
 
 ## What I'd Do Differently
 
-- **`frontend/.env.development` and `.env.production` define `VITE_API_URL`, but `api.js` never reads it** — it hardcodes the Railway URL directly. Those env files exist and do nothing; switching environments currently means editing source instead of setting a variable. Small, but it's the kind of thing that looks careless in code review.
 - **No refresh tokens.** Every access token is valid for a flat 7 days with no way to revoke one early — there's no server-side session to invalidate on logout, no rotation, nothing. If a token leaked, it's live until it expires no matter what I do. A short-lived access token plus a refresh token (or at minimum a server-side revocation list) would close that gap.
 - **No rate limiting on `/auth/login` or `/auth/register`.** Nothing currently stops repeated password guesses against a known email address.
 - **The `status` / `status_history` sync is entirely an application-code discipline, not a database guarantee.** Every place that changes `status` has to remember to also insert a `status_history` row in the same transaction — I got this right in the one route that does it, but nothing in the schema would stop a future route (or a raw SQL fix in prod) from updating `status` alone and quietly breaking the history. A trigger would make that a guarantee instead of a convention.
@@ -165,11 +202,49 @@ The `IntegrityError` handling in `POST /applications` exists *because* testing s
 
 **Alembic migration files weren't showing up on my Mac.** I generated a migration inside the running `api` container, and the file just... wasn't in my local `alembic/versions/` folder. `COPY . .` in the Dockerfile copies code into the image once, at build time — it's a snapshot, not a sync. Anything created inside the container afterward stays inside the container. Adding `- .:/app` as a volume mount in `docker-compose.yml` made it a live two-way sync instead, so a file created inside the container appears on my Mac (and vice versa) immediately.
 
-**Railway had `DATEBASE_URL` instead of `DATABASE_URL`.** Deployed API returned 500s on every DB-touching route with no useful error visible from the Railway logs alone. I temporarily added a `/debug-env` endpoint that echoed back whether `DATABASE_URL` was set and its prefix, hit it, and immediately saw it was unset — because I'd fat-fingered the env var name in Railway's dashboard. Fixed the typo, deleted the debug endpoint the same day (it's the kind of thing you do not want to accidentally leave in prod).
+**Railway had `DATEBASE_URL` instead of `DATABASE_URL`.** (Historical — the API no longer runs on Railway; see [Migrations](#migrations) and [Deployment](#deployment) below.) Deployed API returned 500s on every DB-touching route with no useful error visible from the Railway logs alone. I temporarily added a `/debug-env` endpoint that echoed back whether `DATABASE_URL` was set and its prefix, hit it, and immediately saw it was unset — because I'd fat-fingered the env var name in Railway's dashboard. Fixed the typo, deleted the debug endpoint the same day (it's the kind of thing you do not want to accidentally leave in prod).
 
 **CORS silently broke across a redirect.** The frontend called `/applications` (no trailing slash); the route is actually defined at `/applications/`. FastAPI's default behavior is to 307-redirect the first to the second — and that redirect response doesn't carry the same CORS headers as a normal response, so the browser blocked it as a CORS failure with an error message that had nothing to do with the real cause. My first instinct was to set `redirect_slashes=False` on the app to kill the redirect entirely — that "worked," but it was a band-aid on top of not understanding the real problem. I reverted it and fixed the actual source: changed the frontend's Axios calls to hit `/applications/` directly, matching how the route is actually defined, so no redirect happens at all.
 
 **`passlib` and `bcrypt>=4.1` don't get along.** Installing `passlib[bcrypt]` fresh pulled in the latest `bcrypt`, and hashing a password immediately threw `AttributeError: module 'bcrypt' has no attribute '__about__'` — followed by a second, stranger error (`password cannot be longer than 72 bytes`) once passlib fell back to a broken compatibility path. `bcrypt` 4.1 removed the `__about__` submodule that `passlib`'s version-detection code depends on, and passlib hasn't caught up. Pinning `bcrypt==4.0.1` (the last version that still has `__about__`) fixed both errors in one shot. I found this by writing a two-line smoke test (`hash_password`/`verify_password` in isolation) *before* wiring auth into any route — worth doing that in general before building on top of a new dependency.
+
+## Migrations
+
+Alembic **cannot** run inside a Vercel serverless function — there's no long-lived
+process to run it in, and the lifespan handler in `app/main.py` deliberately
+makes no DB calls at startup (a cold start blocking on a migration check would
+be slow and fragile). Migrations against the deployed Neon database are always
+run manually, from a local machine, pointed at the Neon `DATABASE_URL`:
+
+```bash
+DATABASE_URL="<neon -pooler connection string>" alembic upgrade head
+```
+
+Locally against Docker Compose's Postgres, keep using (see decision #11 —
+`db` only resolves on Docker's network):
+
+```bash
+docker compose exec api alembic upgrade head
+```
+
+## Deployment
+
+The Vercel project's **Root Directory** must be the repo root (not `frontend/`)
+so `vercel.json`, `api/index.py`, and `requirements.txt` are all visible to the
+build. `vercel.json` handles the frontend build (`frontend/dist` as the output
+directory) and rewrites `/api/*` to the Python function.
+
+Set these in the Vercel dashboard under Project Settings → Environment
+Variables, for the **Production** environment (and Preview, if you want preview
+deployments to hit the real DB):
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | Neon connection string, `-pooler` endpoint (`?sslmode=require&channel_binding=require`) |
+| `SECRET_KEY` | `python -c "import secrets; print(secrets.token_hex(32))"` |
+
+Then push to the branch Vercel tracks for Production. Railway is no longer used
+for anything in this project — the old Railway service can be deleted.
 
 ## Running Locally
 
@@ -187,7 +262,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 # Start Postgres + API
 docker compose up -d
 
-# Run migrations *inside* the container (see decision #11 — `db` only resolves on Docker's network)
+# Run migrations *inside* the container (see Migrations above)
 docker compose exec api alembic upgrade head
 
 # Frontend
@@ -199,6 +274,12 @@ npm run dev   # http://localhost:5173, talks to the API on http://localhost:8000
 To run the backend test suite (doesn't need Docker — it's all SQLite, see decision #7):
 
 ```bash
-pip install -r requirements.txt
-pytest
+pip install -r requirements-dev.txt
+pytest tests/ -v
 ```
+
+`requirements-dev.txt` layers `pytest`, `httpx`, and `pytest-asyncio` on top of
+`requirements.txt`. Those three are test-only and aren't needed by the deployed
+API, so they're kept out of `requirements.txt` — the file Vercel's Python
+runtime and the Docker image both install from — to keep the deployed
+function's dependency set to what actually runs in production.
