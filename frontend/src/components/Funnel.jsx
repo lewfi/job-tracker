@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react"
 import api from "../api"
-import { COLORS, MONO } from "../theme"
+import { COLORS, MONO, STATUS_META } from "../theme"
 
-const FUNNEL_STAGES = ["applied", "oa", "screen", "onsite", "offer"]
+const FUNNEL_STAGES = ["applied", "oa", "screen", "technical", "behavioral", "onsite", "offer"]
 
 function Funnel({ refreshKey }) {
     const [data, setData] = useState(null)
@@ -24,9 +24,8 @@ function Funnel({ refreshKey }) {
             <div style={{ fontSize: "13px", fontWeight: 600, fontFamily: MONO, letterSpacing: ".02em", marginBottom: "2px" }}>FUNNEL CONVERSION</div>
             <div style={{ fontSize: "12px", color: COLORS.muted, marginBottom: "18px" }}>Share of applications reaching each stage</div>
             <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
-                {bars.map((row, i) => {
+                {bars.map((row) => {
                     const pct = Math.round(row.conversion_rate * 100)
-                    const isLast = i === bars.length - 1
                     return (
                         <div key={row.stage} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                             <div style={{
@@ -35,7 +34,7 @@ function Funnel({ refreshKey }) {
                             }}>
                                 <div style={{
                                     width: `${Math.max(pct, 4)}%`, height: "100%",
-                                    background: isLast ? COLORS.accent : "transparent",
+                                    background: STATUS_META[row.stage].swatch,
                                 }}></div>
                             </div>
                             <span style={{ fontSize: "12px", fontFamily: MONO, whiteSpace: "nowrap", color: COLORS.dark }}>
