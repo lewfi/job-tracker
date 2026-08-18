@@ -15,7 +15,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://job-tracker-indol-eight.vercel.app/"
+        "https://job-tracker-indol-eight.vercel.app"
     ],
     allow_methods=["*"],
     allow_headers=["*"],
