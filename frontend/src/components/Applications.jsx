@@ -174,7 +174,7 @@ const Applications = forwardRef(function Applications({ onDataChange }, ref) {
     const sortIndicator = (field) => sortField === field ? (sortDir === "asc" ? " ▲" : " ▼") : ""
 
     const totalCount = applications.length
-    const activeCount = applications.filter(a => !["rejected", "withdrawn"].includes(a.status)).length
+    const activeCount = applications.filter(a => !["rejected", "withdrawn", "ghosted"].includes(a.status)).length
     const offerCount = applications.filter(a => a.status === "offer").length
 
     const noAppsAtAll = totalCount === 0

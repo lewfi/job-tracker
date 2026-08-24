@@ -1,3 +1,9 @@
+from datetime import date, timedelta
+
+# A recent date well within the 60-day ghosting window, used by tests that
+# don't care about ghosting behavior specifically.
+RECENT_DATE = (date.today() - timedelta(days=5)).isoformat()
+
 # ===== CORE TESTS =====
 
 
@@ -9,7 +15,7 @@ def test_create_application(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -18,7 +24,7 @@ def test_create_application(client):
     assert data["company"] == "Test Company"
     assert data["role"] == "Software Engineer"
     assert data["status"] == "applied"
-    assert data["date_applied"] == "2026-01-01"
+    assert data["date_applied"] == RECENT_DATE
     assert data["source"] == "linkedin"
 
 def test_get_applications(client):
@@ -37,7 +43,7 @@ def test_get_application_by_id(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -53,7 +59,7 @@ def test_get_application_by_id(client):
     assert data["company"] == "Test Company"
     assert data["role"] == "Software Engineer"
     assert data["status"] == "applied"
-    assert data["date_applied"] == "2026-01-01"
+    assert data["date_applied"] == RECENT_DATE
     assert data["source"] == "linkedin"
 
 def test_get_application_not_found(client):
@@ -72,7 +78,7 @@ def test_delete_application(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -109,7 +115,7 @@ def test_create_application_invalid_status(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "invalid_status",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -123,7 +129,7 @@ def test_create_application_invalid_source(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "invalid_source",
         }
     )
@@ -138,7 +144,7 @@ def test_patch_application_valid_field(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -162,7 +168,7 @@ def test_patch_application_status_creates_history(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -199,7 +205,7 @@ def test_patch_application_empty_body(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -224,7 +230,7 @@ def test_create_application_has_initial_status_history(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -244,7 +250,7 @@ def test_multiple_status_changes_create_history(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -279,7 +285,7 @@ def test_delete_already_deleted_application(client):
             "company": "Test Company",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     )
@@ -301,7 +307,7 @@ def test_create_multiple_applications(client):
                 "company": company,
                 "role": "Software Engineer",
                 "status": "applied",
-                "date_applied": "2026-01-01",
+                "date_applied": RECENT_DATE,
                 "source": "linkedin",
             }
         )
@@ -323,7 +329,7 @@ def test_patch_does_not_affect_other_applications(client):
             "company": "Company A",
             "role": "Software Engineer",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "linkedin",
         }
     ).json()
@@ -334,7 +340,7 @@ def test_patch_does_not_affect_other_applications(client):
             "company": "Company B",
             "role": "Product Manager",
             "status": "applied",
-            "date_applied": "2026-01-01",
+            "date_applied": RECENT_DATE,
             "source": "indeed",
         }
     ).json()
@@ -347,3 +353,124 @@ def test_patch_does_not_affect_other_applications(client):
     data = response.json()
     assert data["status"] == "applied"
     assert data["company"] == "Company B"
+
+
+# ===== GHOSTING TESTS =====
+
+OLD_DATE = (date.today() - timedelta(days=61)).isoformat()
+BOUNDARY_DATE = (date.today() - timedelta(days=60)).isoformat()
+
+def test_get_application_ghosts_after_60_days(client):
+    # Applied over 60 days ago and still "applied" — should flip to "ghosted" on read
+    create_response = client.post(
+        "/applications/",
+        json={
+            "company": "Test Company",
+            "role": "Software Engineer",
+            "status": "applied",
+            "date_applied": OLD_DATE,
+            "source": "linkedin",
+        }
+    )
+    application_id = create_response.json()["id"]
+
+    response = client.get(f"/applications/{application_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ghosted"
+
+    # A status_history entry recording the transition to ghosted should exist
+    assert data["status_history"][-1]["status"] == "ghosted"
+
+def test_get_applications_list_ghosts_stale_entries(client):
+    client.post(
+        "/applications/",
+        json={
+            "company": "Stale Co",
+            "role": "Engineer",
+            "status": "applied",
+            "date_applied": OLD_DATE,
+            "source": "linkedin",
+        }
+    )
+    client.post(
+        "/applications/",
+        json={
+            "company": "Fresh Co",
+            "role": "Engineer",
+            "status": "applied",
+            "date_applied": RECENT_DATE,
+            "source": "linkedin",
+        }
+    )
+
+    response = client.get("/applications/")
+    data = response.json()
+    statuses = {app["company"]: app["status"] for app in data}
+    assert statuses["Stale Co"] == "ghosted"
+    assert statuses["Fresh Co"] == "applied"
+
+def test_ghosting_respects_60_day_boundary(client):
+    # Exactly at the 60-day mark should already be ghosted (inclusive cutoff)
+    create_response = client.post(
+        "/applications/",
+        json={
+            "company": "Boundary Co",
+            "role": "Engineer",
+            "status": "applied",
+            "date_applied": BOUNDARY_DATE,
+            "source": "linkedin",
+        }
+    )
+    application_id = create_response.json()["id"]
+
+    response = client.get(f"/applications/{application_id}")
+    assert response.json()["status"] == "ghosted"
+
+def test_ghosting_does_not_affect_non_applied_statuses(client):
+    # An old application that already moved past "applied" should not be ghosted
+    create_response = client.post(
+        "/applications/",
+        json={
+            "company": "In Progress Co",
+            "role": "Engineer",
+            "status": "applied",
+            "date_applied": OLD_DATE,
+            "source": "linkedin",
+        }
+    )
+    application_id = create_response.json()["id"]
+    client.patch(f"/applications/{application_id}", json={"status": "screen"})
+
+    response = client.get(f"/applications/{application_id}")
+    data = response.json()
+    assert data["status"] == "screen"
+
+def test_ghosted_application_can_be_reactivated(client):
+    # Create an application old enough to ghost, and let it ghost
+    create_response = client.post(
+        "/applications/",
+        json={
+            "company": "Reactivate Co",
+            "role": "Engineer",
+            "status": "applied",
+            "date_applied": OLD_DATE,
+            "source": "linkedin",
+        }
+    )
+    application_id = create_response.json()["id"]
+
+    ghosted_response = client.get(f"/applications/{application_id}")
+    assert ghosted_response.json()["status"] == "ghosted"
+
+    # User gets contacted after all — manually reactivate it
+    patch_response = client.patch(f"/applications/{application_id}", json={"status": "applied"})
+    assert patch_response.status_code == 200
+    assert patch_response.json()["status"] == "applied"
+
+    # Re-fetching should NOT immediately re-ghost it, even though date_applied
+    # is still more than 60 days in the past — the reactivation resets the clock
+    response = client.get(f"/applications/{application_id}")
+    data = response.json()
+    assert data["status"] == "applied"
+    assert data["status_history"][-1]["status"] == "applied"

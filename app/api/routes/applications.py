@@ -7,6 +7,7 @@ from app.models.user import User
 from app.api.deps import get_db, get_current_user
 from app.schemas.application import ApplicationCreate, ApplicationRead, ApplicationUpdate
 from app.models.status_history import StatusHistory
+from app.services.ghosting import apply_ghosting
 
 router = APIRouter()
 
@@ -39,7 +40,9 @@ def create_application(application: ApplicationCreate, db: Session = Depends(get
 # Get all applications
 @router.get("/", response_model=list[ApplicationRead])
 def get_applications(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return db.execute(select(Application).where(Application.user_id == current_user.id)).scalars().all()
+    applications = db.execute(select(Application).where(Application.user_id == current_user.id)).scalars().all()
+    apply_ghosting(db, applications)
+    return applications
 
 # Get a specific application by ID
 @router.get("/{application_id}", response_model=ApplicationRead)
@@ -52,6 +55,7 @@ def get_application(application_id: int, db: Session = Depends(get_db), current_
     ).scalar_one_or_none()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
+    apply_ghosting(db, [application])
     return application
 
 # Update a specific application by ID

@@ -10,7 +10,7 @@ export const COLORS = {
 
 export const MONO = "'IBM Plex Mono', monospace"
 
-export const STATUSES = ["applied", "oa", "screen", "technical", "behavioral", "onsite", "offer", "rejected", "withdrawn"]
+export const STATUSES = ["applied", "oa", "screen", "technical", "behavioral", "onsite", "offer", "rejected", "withdrawn", "ghosted"]
 export const SOURCES = ["linkedin", "indeed", "company_website", "referral", "handshake", "other"]
 
 export const SOURCE_LABELS = {
@@ -32,6 +32,7 @@ export const STATUS_LABELS = {
     offer: "Offer",
     rejected: "Rejected",
     withdrawn: "Withdrawn",
+    ghosted: "Ghosted",
 }
 
 // `swatch` is the representative hue for each status (used in charts/bars).
@@ -47,4 +48,5 @@ export const STATUS_META = {
     offer: { bg: "#16A34A", color: "#FFFFFF", swatch: "#16A34A" },
     rejected: { bg: "#FEE2E2", color: COLORS.error, swatch: COLORS.error },
     withdrawn: { bg: "#F5F5F4", color: "#57534E", swatch: "#57534E" },
+    ghosted: { bg: "#E5E7EB", color: "#374151", swatch: "#374151" },
 }

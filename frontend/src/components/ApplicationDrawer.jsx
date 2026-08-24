@@ -26,7 +26,8 @@ function ApplicationDrawer({ title, submitLabel, initialForm, onClose, onSubmit 
     const [form, setForm] = useState(initialForm)
     const [error, setError] = useState("")
 
-    const handleSubmit = () => {
+    const handleSubmit = (e) => {
+        e.preventDefault()
         onSubmit(form)
             .then(() => setError(""))
             .catch((message) => setError(typeof message === "string" && message ? message : "Something went wrong. Check your inputs."))
@@ -40,8 +41,9 @@ function ApplicationDrawer({ title, submitLabel, initialForm, onClose, onSubmit 
                 display: "flex", justifyContent: "flex-end", zIndex: 20,
             }}
         >
-            <div
+            <form
                 onClick={e => e.stopPropagation()}
+                onSubmit={handleSubmit}
                 style={{
                     width: "400px", maxWidth: "90vw", height: "100%", background: "#fff",
                     padding: "28px", overflow: "auto", borderLeft: `1px solid ${COLORS.border}`,
@@ -49,7 +51,7 @@ function ApplicationDrawer({ title, submitLabel, initialForm, onClose, onSubmit 
             >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "22px" }}>
                     <span style={{ fontSize: "15px", fontWeight: 600, fontFamily: MONO, letterSpacing: ".02em" }}>{title}</span>
-                    <button onClick={onClose} style={{ background: "none", border: "none", fontSize: "18px", color: COLORS.dark, cursor: "pointer" }}>✕</button>
+                    <button type="button" onClick={onClose} style={{ background: "none", border: "none", fontSize: "18px", color: COLORS.dark, cursor: "pointer" }}>✕</button>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "13px" }}>
@@ -84,16 +86,16 @@ function ApplicationDrawer({ title, submitLabel, initialForm, onClose, onSubmit 
                 </div>
 
                 <div style={{ display: "flex", gap: "10px", marginTop: "22px" }}>
-                    <button onClick={onClose} style={{
+                    <button type="button" onClick={onClose} style={{
                         flex: 1, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: "2px",
                         padding: "12px", fontSize: "13px", fontWeight: 600, fontFamily: MONO,
                     }}>CANCEL</button>
-                    <button onClick={handleSubmit} style={{
+                    <button type="submit" style={{
                         flex: 1, background: COLORS.accent, border: "none", borderRadius: "2px",
                         padding: "12px", fontSize: "13px", fontWeight: 600, color: "#fff", fontFamily: MONO,
                     }}>{submitLabel}</button>
                 </div>
-            </div>
+            </form>
         </div>
     )
 }
