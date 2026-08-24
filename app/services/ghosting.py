@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.application import Application
 from app.models.status_history import StatusHistory
 
-GHOSTING_THRESHOLD_DAYS = 60
+GHOSTING_THRESHOLD_DAYS = 45
 
 
 def _ghosting_reference_date(application: Application) -> date:

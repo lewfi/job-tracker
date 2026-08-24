@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-# A recent date well within the 60-day ghosting window, used by tests that
+# A recent date well within the 45-day ghosting window, used by tests that
 # don't care about ghosting behavior specifically.
 RECENT_DATE = (date.today() - timedelta(days=5)).isoformat()
 
@@ -357,11 +357,11 @@ def test_patch_does_not_affect_other_applications(client):
 
 # ===== GHOSTING TESTS =====
 
-OLD_DATE = (date.today() - timedelta(days=61)).isoformat()
-BOUNDARY_DATE = (date.today() - timedelta(days=60)).isoformat()
+OLD_DATE = (date.today() - timedelta(days=46)).isoformat()
+BOUNDARY_DATE = (date.today() - timedelta(days=45)).isoformat()
 
-def test_get_application_ghosts_after_60_days(client):
-    # Applied over 60 days ago and still "applied" — should flip to "ghosted" on read
+def test_get_application_ghosts_after_45_days(client):
+    # Applied over 45 days ago and still "applied" — should flip to "ghosted" on read
     create_response = client.post(
         "/applications/",
         json={
@@ -410,8 +410,8 @@ def test_get_applications_list_ghosts_stale_entries(client):
     assert statuses["Stale Co"] == "ghosted"
     assert statuses["Fresh Co"] == "applied"
 
-def test_ghosting_respects_60_day_boundary(client):
-    # Exactly at the 60-day mark should already be ghosted (inclusive cutoff)
+def test_ghosting_respects_45_day_boundary(client):
+    # Exactly at the 45-day mark should already be ghosted (inclusive cutoff)
     create_response = client.post(
         "/applications/",
         json={
@@ -469,8 +469,33 @@ def test_ghosted_application_can_be_reactivated(client):
     assert patch_response.json()["status"] == "applied"
 
     # Re-fetching should NOT immediately re-ghost it, even though date_applied
-    # is still more than 60 days in the past — the reactivation resets the clock
+    # is still more than 45 days in the past — the reactivation resets the clock
     response = client.get(f"/applications/{application_id}")
     data = response.json()
     assert data["status"] == "applied"
     assert data["status_history"][-1]["status"] == "applied"
+
+def test_can_manually_set_status_to_ghosted(client):
+    # Manually marking an application as ghosted should be allowed even
+    # though it's nowhere near the 45-day auto-ghosting threshold
+    create_response = client.post(
+        "/applications/",
+        json={
+            "company": "Manual Ghost Co",
+            "role": "Engineer",
+            "status": "applied",
+            "date_applied": RECENT_DATE,
+            "source": "linkedin",
+        }
+    )
+    application_id = create_response.json()["id"]
+
+    patch_response = client.patch(f"/applications/{application_id}", json={"status": "ghosted"})
+    assert patch_response.status_code == 200
+    data = patch_response.json()
+    assert data["status"] == "ghosted"
+    assert data["status_history"][-1]["status"] == "ghosted"
+
+    # Persists on re-fetch
+    response = client.get(f"/applications/{application_id}")
+    assert response.json()["status"] == "ghosted"

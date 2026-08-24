@@ -82,7 +82,11 @@ def update_application(application_id: int, application_update: ApplicationUpdat
             db.add(db_status_history)
 
     # Commit changes in one transaction, refresh application, and return
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=422, detail="Invalid field value: check status and source constraints")
     db.refresh(application)
     return application
 
