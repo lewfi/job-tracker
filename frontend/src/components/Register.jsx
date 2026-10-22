@@ -1,5 +1,5 @@
 import { useState } from "react"
-import api from "../api"
+import api, { describeApiError } from "../api"
 import { COLORS, MONO } from "../theme"
 
 const inputStyle = {
@@ -30,7 +30,7 @@ function Register({ onAuthSuccess, onSwitchToLogin }) {
             .catch(err => setError(
                 err.response?.status === 409
                     ? "That email is already registered."
-                    : "Registration failed. Check your inputs."
+                    : describeApiError(err, "register")
             ))
     }
 

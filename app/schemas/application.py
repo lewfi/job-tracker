@@ -36,6 +36,7 @@ class ApplicationRead(BaseModel):
     salary_max: int | None = None
     salary_text: str | None = None
     notes: str | None = None
+    is_priority: bool = False
     status_history: list[StatusHistoryRead] | None = None
 
 class ApplicationUpdate(BaseModel):
@@ -50,3 +51,4 @@ class ApplicationUpdate(BaseModel):
     salary_max: int | None = None
     salary_text: str | None = None
     notes: str | None = None
+    is_priority: bool | None = None

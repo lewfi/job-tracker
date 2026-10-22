@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react"
 import Applications from "./components/Applications"
+import Priority from "./components/Priority"
 import Analytics from "./components/Analytics"
 import Login from "./components/Login"
 import Register from "./components/Register"
@@ -84,6 +85,7 @@ function App() {
 
       <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "28px 32px 80px" }}>
         <div style={{ display: tab === "apps" ? "block" : "none" }}>
+          <Priority refreshKey={refreshKey} />
           <Applications ref={applicationsRef} onDataChange={handleDataChange} />
         </div>
         <div style={{ display: tab === "analytics" ? "block" : "none" }}>

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import api from "../api"
+import api, { describeApiError } from "../api"
 import { COLORS, MONO } from "../theme"
 
 const inputStyle = {
@@ -23,7 +23,11 @@ function Login({ onAuthSuccess, onSwitchToRegister }) {
         setError("")
         api.post("/auth/login", form)
             .then(res => onAuthSuccess(res.data.email, res.data.access_token))
-            .catch(() => setError("Invalid email or password."))
+            .catch(err => setError(
+                err.response?.status === 401
+                    ? "Invalid email or password."
+                    : describeApiError(err, "log in")
+            ))
     }
 
     return (

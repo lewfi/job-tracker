@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.models.application import Application
 from app.models.status_history import StatusHistory
@@ -32,6 +33,14 @@ def apply_ghosting(db: Session, applications: list[Application]) -> None:
             changed.append(application)
 
     if changed:
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # DB schema doesn't allow 'ghosted' yet (pending migration) —
+            # don't let that break reads, just skip auto-ghosting for now.
+            db.rollback()
+            for application in changed:
+                db.refresh(application)
+            return
         for application in changed:
             db.refresh(application)

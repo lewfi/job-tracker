@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from datetime import datetime, date, timezone
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import CheckConstraint, String, Integer, Date, DateTime, ForeignKey
+from sqlalchemy import CheckConstraint, String, Integer, Date, DateTime, ForeignKey, Boolean, UniqueConstraint, false
 from app.core.database import Base
 
 if TYPE_CHECKING:
@@ -16,7 +16,8 @@ class Application(Base):
 
     __table_args__ = (
         CheckConstraint("source IN ('linkedin', 'indeed', 'company_website', 'referral', 'handshake', 'other')", name="source_check"),
-        CheckConstraint("status IN ('applied', 'oa', 'screen', 'technical', 'behavioral', 'onsite', 'offer', 'rejected', 'withdrawn', 'ghosted')", name="status_check"),
+        CheckConstraint("status IN ('applied', 'oa', 'screen', 'technical', 'onsite', 'offer', 'rejected', 'withdrawn', 'ghosted')", name="status_check"),
+        UniqueConstraint("user_id", "idempotency_key", name="uq_applications_user_idempotency_key"),
     )
 
     # Core fields
@@ -38,6 +39,12 @@ class Application(Base):
 
     # Notes
     notes: Mapped[str] = mapped_column(String(1000), nullable=True)
+
+    # Manual priority star (status-based priority is computed, not stored)
+    is_priority: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+
+    # Client-generated key so a retried/double-submitted create doesn't insert twice
+    idempotency_key: Mapped[str | None] = mapped_column(String(64))
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=default, nullable=False)

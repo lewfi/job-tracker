@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { COLORS, MONO, STATUSES, SOURCES, STATUS_LABELS, SOURCE_LABELS } from "../theme"
 
 const inputStyle = {
@@ -22,15 +22,33 @@ const selectStyle = {
 // edited), so this initial state naturally resets each time it opens — no
 // effect-based resync needed, which would otherwise clobber in-progress edits
 // on unrelated parent re-renders.
-function ApplicationDrawer({ title, submitLabel, initialForm, onClose, onSubmit }) {
+// SLOW_REQUEST_MS: after this long in flight, say the server may be cold-starting.
+const SLOW_REQUEST_MS = 4000
+
+function ApplicationDrawer({ title, submitLabel, pendingLabel, initialForm, onClose, onSubmit }) {
     const [form, setForm] = useState(initialForm)
     const [error, setError] = useState("")
+    const [submitting, setSubmitting] = useState(false)
+    const [slow, setSlow] = useState(false)
+
+    useEffect(() => {
+        if (!submitting) return
+        const timer = setTimeout(() => setSlow(true), SLOW_REQUEST_MS)
+        return () => {
+            clearTimeout(timer)
+            setSlow(false)
+        }
+    }, [submitting])
 
     const handleSubmit = (e) => {
         e.preventDefault()
+        // The button is disabled while in flight; this also blocks Enter-key resubmits
+        if (submitting) return
+        setSubmitting(true)
+        setError("")
         onSubmit(form)
-            .then(() => setError(""))
-            .catch((message) => setError(typeof message === "string" && message ? message : "Something went wrong. Check your inputs."))
+            .catch((message) => setError(typeof message === "string" && message ? message : "Something went wrong. Try again."))
+            .finally(() => setSubmitting(false))
     }
 
     return (
@@ -83,6 +101,7 @@ function ApplicationDrawer({ title, submitLabel, initialForm, onClose, onSubmit 
                         style={{ ...inputStyle, resize: "none" }}
                         onChange={e => setForm({ ...form, notes: e.target.value })} />
                     {error && <div style={{ fontSize: "12px", color: COLORS.error, fontFamily: MONO }}>{error}</div>}
+                    {slow && <div style={{ fontSize: "12px", color: COLORS.muted, fontFamily: MONO }}>Still working — the server may be waking up, which can take up to a minute.</div>}
                 </div>
 
                 <div style={{ display: "flex", gap: "10px", marginTop: "22px" }}>
@@ -90,10 +109,11 @@ function ApplicationDrawer({ title, submitLabel, initialForm, onClose, onSubmit 
                         flex: 1, background: "#fff", border: `1px solid ${COLORS.border}`, borderRadius: "2px",
                         padding: "12px", fontSize: "13px", fontWeight: 600, fontFamily: MONO,
                     }}>CANCEL</button>
-                    <button type="submit" style={{
+                    <button type="submit" disabled={submitting} style={{
                         flex: 1, background: COLORS.accent, border: "none", borderRadius: "2px",
                         padding: "12px", fontSize: "13px", fontWeight: 600, color: "#fff", fontFamily: MONO,
-                    }}>{submitLabel}</button>
+                        opacity: submitting ? 0.6 : 1, cursor: submitting ? "wait" : "pointer",
+                    }}>{submitting ? pendingLabel : submitLabel}</button>
                 </div>
             </form>
         </div>
